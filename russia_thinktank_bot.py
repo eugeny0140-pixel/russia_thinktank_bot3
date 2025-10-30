@@ -18,10 +18,10 @@ if not TELEGRAM_TOKEN:
     raise ValueError("❌ TELEGRAM_BOT_TOKEN не задан")
 
 SOURCES = [
+    {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
     {"name": "Reuters Institute", "url": "https://reutersinstitute.politics.ox.ac.uk/rss.xml"},
     {"name": "Bruegel", "url": "https://www.bruegel.org/rss.xml"},
-    {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Chatham House", "url": "https://www.chathamhouse.org/rss.xml"},
     {"name": "CSIS", "url": "https://www.csis.org/rss.xml"},
     {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
@@ -99,10 +99,6 @@ def get_source_prefix(name):
             return val
     return name.split()[0].lower()
 
-def escape_markdown_v2(text):
-    # Экранируем только символы, которые ломают MarkdownV2
-    return text.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]')
-
 def fetch_rss_news():
     global seen_links
     result = []
@@ -136,29 +132,27 @@ def fetch_rss_news():
                 if desc_tag:
                     raw_html = desc_tag.get_text()
                     desc_text = clean_text(BeautifulSoup(raw_html, "html.parser").get_text())
-
-                    # Отсеиваем шаблонные фразы
-                    if not re.search(
-                        r"(?i)appeared first on|this article was|originally published|post.*appeared|insight-impact",
-                        desc_text
-                    ):
-                        if len(desc_text) > 400:
-                            description = desc_text[:400].rsplit(' ', 1)[0] + "…"
-                        else:
-                            description = desc_text
+                    if not re.search(r"(?i)appeared first on|this article was|originally published|post.*appeared", desc_text):
+                        description = desc_text[:400].rsplit(' ', 1)[0] + "…" if len(desc_text) > 400 else desc_text
 
                 if not description.strip():
                     description = get_summary(title)
 
-                # Переводим
+                # Переводим ВЕСЬ текст на русский
                 ru_title = translate_to_russian(title)
-                description_ru = translate_to_russian(description)
+                ru_desc = translate_to_russian(description)
 
-                # Экранируем только обычный текст (не ссылку!)
-                safe_title = escape_markdown_v2(ru_title)
-                safe_desc = escape_markdown_v2(description_ru)
+                # Экранируем ВСЕ спецсимволы для MarkdownV2
+                def escape_md_v2(text):
+                    for c in r'_*[]()~`>#+-=|{}.!':
+                        text = text.replace(c, '\\' + c)
+                    return text
 
+                safe_title = escape_md_v2(ru_title)
+                safe_desc = escape_md_v2(ru_desc)
                 prefix = get_source_prefix(src["name"])
+
+                # Формируем сообщение: только последняя строка — ссылка
                 msg = f"{prefix}: {safe_title}\n\n{safe_desc}\n\n[Источник]({link})"
                 result.append({"msg": msg, "link": link})
 
@@ -172,12 +166,15 @@ def send_to_telegram(text):
     payload = {
         "chat_id": CHANNEL_ID,
         "text": text,
-        "parse_mode": "MarkdownV2",  # используем MarkdownV2 для надёжности
+        "parse_mode": "MarkdownV2",
         "disable_web_page_preview": True,
     }
     try:
         r = requests.post(url, data=payload, timeout=15)
-        log.info("✅ Отправлено" if r.status_code == 200 else f"❌ Ошибка: {r.text}")
+        if r.status_code == 200:
+            log.info("✅ Отправлено")
+        else:
+            log.error(f"❌ Telegram error: {r.text}")
     except Exception as e:
         log.error(f"❌ Исключение: {e}")
 
