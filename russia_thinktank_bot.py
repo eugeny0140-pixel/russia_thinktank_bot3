@@ -58,26 +58,6 @@ def translate_to_russian(text):
     except:
         return text
 
-def get_summary(title):
-    low = title.lower()
-    if re.search(r"sanction|embargo|restrict", low):
-        return "Введены новые санкции или ограничения."
-    if re.search(r"war|attack|strike|bomb|conflict|military", low):
-        return "Сообщается о военных действиях или ударах."
-    if re.search(r"putin|kremlin|peskov|moscow", low):
-        return "Заявление или действие со стороны Кремля."
-    if re.search(r"economy|rubl?e|oil|gas|gazprom|nord\s?stream|energy", low):
-        return "Новости экономики, нефти, газа или рубля."
-    if re.search(r"diplomat|talks|negotiat|meeting|lavrov", low):
-        return "Дипломатические переговоры или контакты."
-    if re.search(r"wagner|shoigu|medvedev|defense", low):
-        return "События с российскими военными или политиками."
-    if re.search(r"ukraine|zelensky|kyiv|kiev|crimea|donbas", low):
-        return "События, связанные с Украиной и прилегающими регионами."
-    if re.search(r"nato|europa|european|germany|france|usa|uk", low):
-        return "Реакция западных стран или НАТО на события с участием России."
-    return "Аналитика, связанная с Россией или постсоветским пространством."
-
 def get_source_prefix(name):
     name = name.lower()
     mapping = {
@@ -126,34 +106,39 @@ def fetch_rss_news():
                 if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
 
-                # === Получаем описание ===
-                description = ""
+                # === Извлекаем ЛИД (первый абзац) ===
+                lead = ""
                 desc_tag = item.find("description") or item.find("content:encoded")
                 if desc_tag:
                     raw_html = desc_tag.get_text()
-                    desc_text = clean_text(BeautifulSoup(raw_html, "html.parser").get_text())
-                    if not re.search(r"(?i)appeared first on|this article was|originally published|post.*appeared", desc_text):
-                        description = desc_text[:400].rsplit(' ', 1)[0] + "…" if len(desc_text) > 400 else desc_text
+                    desc_soup = BeautifulSoup(raw_html, "html.parser")
+                    full_text = clean_text(desc_soup.get_text())
 
-                if not description.strip():
-                    description = get_summary(title)
+                    # Берём первое предложение (до первой точки, восклицания или вопроса)
+                    sentences = re.split(r'(?<=[.!?])\s+', full_text)
+                    if sentences and sentences[0].strip():
+                        lead = sentences[0].strip()
+                    else:
+                        lead = full_text[:250] + "…" if len(full_text) > 250 else full_text
 
-                # Переводим ВЕСЬ текст на русский
+                # Если нет лида — пропускаем статью (или можно использовать заголовок)
+                if not lead.strip():
+                    continue
+
                 ru_title = translate_to_russian(title)
-                ru_desc = translate_to_russian(description)
+                ru_lead = translate_to_russian(lead)
 
-                # Экранируем ВСЕ спецсимволы для MarkdownV2
+                # Экранирование для MarkdownV2
                 def escape_md_v2(text):
                     for c in r'_*[]()~`>#+-=|{}.!':
                         text = text.replace(c, '\\' + c)
                     return text
 
                 safe_title = escape_md_v2(ru_title)
-                safe_desc = escape_md_v2(ru_desc)
+                safe_lead = escape_md_v2(ru_lead)
                 prefix = get_source_prefix(src["name"])
 
-                # Формируем сообщение: только последняя строка — ссылка
-                msg = f"{prefix}: {safe_title}\n\n{safe_desc}\n\n[Источник]({link})"
+                msg = f"{prefix}: {safe_title}\n\n{safe_lead}\n\n[Источник]({link})"
                 result.append({"msg": msg, "link": link})
 
         except Exception as e:
