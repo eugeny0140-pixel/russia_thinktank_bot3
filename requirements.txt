@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+deep-translator
+schedule
+lxml
+python-dotenv
