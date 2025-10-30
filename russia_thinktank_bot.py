@@ -17,6 +17,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 if not TELEGRAM_TOKEN:
     raise ValueError("❌ TELEGRAM_BOT_TOKEN не задан")
 
+# Убраны пробелы в URL!
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -88,7 +89,7 @@ def fetch_rss_news():
         if len(result) >= MAX_PER_RUN:
             break
         try:
-            url = src["url"].strip()
+            url = src["url"]  # уже без пробелов
             log.info(f"📡 {src['name']}")
             resp = requests.get(url, timeout=30, headers=headers)
             soup = BeautifulSoup(resp.content, "xml")
@@ -106,22 +107,19 @@ def fetch_rss_news():
                 if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
 
-                # === Извлекаем ЛИД (первый абзац) ===
+                # === Извлекаем лид из статьи ===
                 lead = ""
                 desc_tag = item.find("description") or item.find("content:encoded")
                 if desc_tag:
                     raw_html = desc_tag.get_text()
                     desc_soup = BeautifulSoup(raw_html, "html.parser")
                     full_text = clean_text(desc_soup.get_text())
-
-                    # Берём первое предложение (до первой точки, восклицания или вопроса)
                     sentences = re.split(r'(?<=[.!?])\s+', full_text)
                     if sentences and sentences[0].strip():
                         lead = sentences[0].strip()
                     else:
                         lead = full_text[:250] + "…" if len(full_text) > 250 else full_text
 
-                # Если нет лида — пропускаем статью (или можно использовать заголовок)
                 if not lead.strip():
                     continue
 
@@ -147,6 +145,7 @@ def fetch_rss_news():
     return result
 
 def send_to_telegram(text):
+    # 🔥 ИСПРАВЛЕНО: убраны пробелы после /bot
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
