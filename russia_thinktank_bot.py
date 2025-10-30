@@ -7,17 +7,14 @@ import requests
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
 import schedule
-from dotenv import load_dotenv
 
-load_dotenv()
-
+# ================== НАСТРОЙКИ ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 
 if not TELEGRAM_TOKEN:
-    raise ValueError("❌ TELEGRAM_BOT_TOKEN не задан")
+    raise ValueError("TELEGRAM_BOT_TOKEN не задан")
 
-# Исправлено: убраны пробелы в конце URL
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -107,7 +104,6 @@ def fetch_rss_news():
                 if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
 
-                # === Извлекаем лид (первый абзац) ===
                 lead = ""
                 desc_tag = item.find("description") or item.find("content:encoded")
                 if desc_tag:
@@ -126,7 +122,6 @@ def fetch_rss_news():
                 ru_title = translate_to_russian(title)
                 ru_lead = translate_to_russian(lead)
 
-                # Экранирование для MarkdownV2
                 def escape_md_v2(text):
                     for c in r'_*[]()~`>#+-=|{}.!':
                         text = text.replace(c, '\\' + c)
@@ -145,7 +140,6 @@ def fetch_rss_news():
     return result
 
 def send_to_telegram(text):
-    # 🔥 ИСПРАВЛЕНО: убраны пробелы после /bot
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -177,27 +171,27 @@ def job():
             seen_links = set(list(seen_links)[-4000:])
         time.sleep(1)
 
-# =============== КОСТЫЛЬ ДЛЯ RENDER (Web Service) ===============
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args):
-        pass  # подавляем логи
-
-def start_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    server.serve_forever()
-
-threading.Thread(target=start_health_server, daemon=True).start()
-# ==============================================================
-
+# ================== ЗАПУСК С HTTP-СЕРВЕРОМ ДЛЯ RENDER ==================
 if __name__ == "__main__":
+    # Запуск HTTP-сервера для удовлетворения требования Render
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def log_message(self, format, *args):
+            pass
+
+    def start_server():
+        port = int(os.environ.get("PORT", 10000))
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        server.serve_forever()
+
+    threading.Thread(target=start_server, daemon=True).start()
+
     log.info("🚀 Бот запущен как Web Service на Render")
     job()
     schedule.every(30).minutes.do(job)
