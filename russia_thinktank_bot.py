@@ -17,7 +17,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 if not TELEGRAM_TOKEN:
     raise ValueError("❌ TELEGRAM_BOT_TOKEN не задан")
 
-# Убраны пробелы в URL!
+# Исправлено: убраны пробелы в конце URL
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -89,7 +89,7 @@ def fetch_rss_news():
         if len(result) >= MAX_PER_RUN:
             break
         try:
-            url = src["url"]  # уже без пробелов
+            url = src["url"].strip()
             log.info(f"📡 {src['name']}")
             resp = requests.get(url, timeout=30, headers=headers)
             soup = BeautifulSoup(resp.content, "xml")
@@ -107,7 +107,7 @@ def fetch_rss_news():
                 if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
 
-                # === Извлекаем лид из статьи ===
+                # === Извлекаем лид (первый абзац) ===
                 lead = ""
                 desc_tag = item.find("description") or item.find("content:encoded")
                 if desc_tag:
@@ -177,23 +177,17 @@ def job():
             seen_links = set(list(seen_links)[-4000:])
         time.sleep(1)
 
-if __name__ == "__main__":
-    log.info("🚀 Бот запущен")
-    job()
-    schedule.every(30).minutes.do(job)
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-# =============== КОСТЫЛЬ ДЛЯ RENDER ===============
+# =============== КОСТЫЛЬ ДЛЯ RENDER (Web Service) ===============
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-import os
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        pass  # подавляем логи
 
 def start_health_server():
     port = int(os.environ.get("PORT", 10000))
@@ -201,3 +195,12 @@ def start_health_server():
     server.serve_forever()
 
 threading.Thread(target=start_health_server, daemon=True).start()
+# ==============================================================
+
+if __name__ == "__main__":
+    log.info("🚀 Бот запущен как Web Service на Render")
+    job()
+    schedule.every(30).minutes.do(job)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
