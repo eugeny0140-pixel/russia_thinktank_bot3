@@ -184,17 +184,20 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
-        # ... весь ваш существующий код ...
+# =============== КОСТЫЛЬ ДЛЯ RENDER ===============
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+import os
 
-# =============== КОСТЫЛЬ ДЛЯ RENDER (Web Service) ===============
-# (вставьте сюда приведённый выше блок)
-# ==============================================================
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
 
-if __name__ == "__main__":
-    log.info("🚀 Бот запущен")
-    job()
-    schedule.every(30).minutes.do(job)
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+def start_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
 
+threading.Thread(target=start_health_server, daemon=True).start()
