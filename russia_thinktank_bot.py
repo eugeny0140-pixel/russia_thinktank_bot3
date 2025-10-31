@@ -10,8 +10,8 @@ from deep_translator import GoogleTranslator
 import schedule
 
 # ================== НАСТРОЙКИ ==================
-TELEGRAM_TOKEN = "  # ⚠️ СКОРО ИСТЕЧЁТ!
-CHANNEL_ID = "@time_n_John"
+TELEGRAM_TOKEN = os.getenv
+CHANNEL_ID = os.getenv
 
 # Только источники, которые реально работают (по логам)
 SOURCES = [
@@ -174,4 +174,5 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
+
 
