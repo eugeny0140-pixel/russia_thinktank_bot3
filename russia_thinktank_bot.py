@@ -76,7 +76,9 @@ def get_source_prefix(name):
         if key in name:
             return val
     return name.split()[0].lower()
-
+def heartbeat():
+    log.info("💓 Бот жив, следующая проверка через ~30 мин")
+    schedule.every(10).minutes.do(heartbeat)
 def fetch_rss_news():
     global seen_links
     result = []
@@ -198,3 +200,4 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
+
