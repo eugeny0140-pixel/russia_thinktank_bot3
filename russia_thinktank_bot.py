@@ -1,22 +1,20 @@
+# russia_thinktank_bot.py
 import os
 import re
 import time
 import logging
 import requests
 from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator, MyMemoryTranslator
+from deep_translator import GoogleTranslator
 import schedule
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 
-# === НАСТРОЙКИ ===
+# ================== НАСТРОЙКИ ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не задан")
 
-# Источники с рабочими RSS (без Carnegie — 404)
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -27,134 +25,176 @@ SOURCES = [
     {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
     {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
     {"name": "CFR", "url": "https://www.cfr.org/rss/"},
+    {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
     {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
 ]
 
 KEYWORDS = [
-    r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bukraine\b", r"\bzelensky\b",
-    r"\bkremlin\b", r"\bmoscow\b", r"\bsanction[s]?\b", r"\bgazprom\b",
-    r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bnato\b", r"\bwar\b"
+    r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
+    r"\bukraine\b", r"\bukrainian\b", r"\bzelensky\b", r"\bkyiv\b", r"\bkiev\b",
+    r"\bcrimea\b", r"\bdonbas\b", r"\bsanction[s]?\b", r"\bgazprom\b",
+    r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bshoigu\b",
+    r"\bmedvedev\b", r"\bpeskov\b", r"\bnato\b", r"\beuropa\b", r"\busa\b",
+    r"\bwar\b", r"\bconflict\b", r"\bmilitary\b", r"\bruble\b", r"\beconomy\b",
+    r"\benergy\b", r"\boil\b", r"\bgas\b", r"\bsoviet\b", r"\bpost\W?soviet\b"
 ]
 
+MAX_SEEN = 5000
+MAX_PER_RUN = 12
 seen_links = set()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-log = logging.getLogger()
 
-def translate(text):
-    """Перевод с резервным MyMemoryTranslator"""
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger(__name__)
+
+def clean_text(t):
+    return re.sub(r"\s+", " ", t).strip()
+
+def translate_to_russian(text):
     try:
         return GoogleTranslator(source='auto', target='ru').translate(text)
-    except Exception as e1:
-        log.warning(f"Google Translate failed: {e1}")
-        try:
-            return MyMemoryTranslator(source='en', target='ru').translate(text)
-        except Exception as e2:
-            log.warning(f"MyMemoryTranslator failed: {e2}")
-            return text
+    except:
+        return text
 
-def get_prefix(name):
+def get_source_prefix(name):
     name = name.lower()
-    if "e3g" in name: return "e3g"
-    if "foreign affairs" in name: return "foreignaffairs"
-    if "reuters" in name: return "reuters"
-    if "bruegel" in name: return "bruegel"
-    if "chatham" in name: return "chathamhouse"
-    if "csis" in name: return "csis"
-    if "atlantic" in name: return "atlanticcouncil"
-    if "rand" in name: return "rand"
-    if "cfr" in name: return "cfr"
-    if "economist" in name: return "economist"
-    if "bloomberg" in name: return "bloomberg"
+    mapping = {
+        "e3g": "e3g",
+        "foreign affairs": "foreignaffairs",
+        "chatham house": "chathamhouse",
+        "csis": "csis",
+        "atlantic council": "atlanticcouncil",
+        "rand": "rand",
+        "cfr": "cfr",
+        "carnegie": "carnegie",
+        "bruegel": "bruegel",
+        "bloomberg": "bloomberg",
+        "reuters institute": "reuters",
+        "the economist": "economist"
+    }
+    for key, val in mapping.items():
+        if key in name:
+            return val
     return name.split()[0].lower()
 
-def fetch_one_per_source():
-    """Парсит по одной свежей статье из каждого источника"""
-    headers = {"User-Agent": "Mozilla/5.0"}
-    messages = []
+def fetch_rss_news():
+    global seen_links
+    result = []
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
     for src in SOURCES:
+        if len(result) >= MAX_PER_RUN:
+            break
         try:
-            resp = requests.get(src["url"], timeout=14, headers=headers)
+            url = src["url"].strip()
+            log.info(f"📡 {src['name']}")
+            resp = requests.get(url, timeout=30, headers=headers)
             soup = BeautifulSoup(resp.content, "xml")
-            item = soup.find("item")
-            if not item:
-                continue
 
-            link = (item.link and item.link.get_text().strip()) or ""
-            title = (item.title and item.title.get_text().strip()) or ""
-            if not title or not link or link in seen_links:
-                continue
+            for item in soup.find_all("item"):
+                if len(result) >= MAX_PER_RUN:
+                    break
 
-            if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
-                continue
+                title = clean_text(item.title.get_text()) if item.title else ""
+                link = (item.link.get_text() or item.guid.get_text()).strip() if item.link or item.guid else ""
 
-            desc = ""
-            desc_tag = item.find("description")
-            if desc_tag:
-                raw = BeautifulSoup(desc_tag.get_text(), "html.parser").get_text()
-                sentences = re.split(r'(?<=[.!?])\s+', raw.strip())
-                desc = sentences[0] if sentences else raw[:200]
+                if not title or not link or link in seen_links:
+                    continue
 
-            if not desc.strip():
-                continue
+                if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
+                    continue
 
-            ru_title = translate(title)
-            ru_desc = translate(desc)
-            prefix = get_prefix(src["name"])
-            msg = f"{prefix}: {ru_title}\n\n{ru_desc}\n\nИсточник ({link})"
-            messages.append((msg, link))
+                lead = ""
+                desc_tag = item.find("description") or item.find("content:encoded")
+                if desc_tag:
+                    raw_html = desc_tag.get_text()
+                    desc_soup = BeautifulSoup(raw_html, "html.parser")
+                    full_text = clean_text(desc_soup.get_text())
+                    sentences = re.split(r'(?<=[.!?])\s+', full_text)
+                    if sentences and sentences[0].strip():
+                        lead = sentences[0].strip()
+                    else:
+                        lead = full_text[:250] + "…" if len(full_text) > 250 else full_text
+
+                if not lead.strip():
+                    continue
+
+                ru_title = translate_to_russian(title)
+                ru_lead = translate_to_russian(lead)
+
+                def escape_md_v2(text):
+                    for c in r'_*[]()~`>#+-=|{}.!':
+                        text = text.replace(c, '\\' + c)
+                    return text
+
+                safe_title = escape_md_v2(ru_title)
+                safe_lead = escape_md_v2(ru_lead)
+                prefix = get_source_prefix(src["name"])
+
+                msg = f"{prefix}: {safe_title}\n\n{safe_lead}\n\n[Источник]({link})"
+                result.append({"msg": msg, "link": link})
 
         except Exception as e:
-            log.error(f"Ошибка {src['name']}: {e}")
-    return messages
+            log.error(f"❌ {src['name']}: {e}")
 
-def job_main():
-    """Отправка новостей каждые 30 минут"""
+    return result
+
+def send_to_telegram(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "text": text,
+        "parse_mode": "MarkdownV2",
+        "disable_web_page_preview": True,
+    }
+    try:
+        r = requests.post(url, data=payload, timeout=15)
+        if r.status_code == 200:
+            log.info("✅ Отправлено")
+        else:
+            log.error(f"❌ Telegram error: {r.text}")
+    except Exception as e:
+        log.error(f"❌ Исключение: {e}")
+
+def job():
+    global seen_links
     log.info("🔄 Проверка новостей...")
-    messages = fetch_one_per_source()
-    count = 0
-    for msg, link in messages:
-        # 🔥 ИСПРАВЛЕНО: убраны пробелы в URL
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        data = {
-            "chat_id": CHANNEL_ID,
-            "text": msg,
-            "disable_web_page_preview": True,
-        }
-        try:
-            r = requests.post(url, data=data, timeout=10)
-            log.info("✅ Отправлено" if r.status_code == 200 else f"❌ Ошибка: {r.text}")
-        except Exception as e:
-            log.error(f"❌ Исключение: {e}")
+    news = fetch_rss_news()
+    if not news:
+        log.info("📭 Нет релевантных публикаций.")
+        return
 
-        seen_links.add(link)
-        count += 1
-        time.sleep(2)
-    log.info(f"✅ Проверка завершена. Отправлено: {count}")
+    for item in news:
+        send_to_telegram(item["msg"])
+        seen_links.add(item["link"])
+        if len(seen_links) > MAX_SEEN:
+            seen_links = set(list(seen_links)[-4000:])
+        time.sleep(1)
 
-# === HTTP-сервер для Render ===
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, format, *args): pass
-
-def start_server():
-    port = int(os.environ.get("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), HealthHandler).serve_forever()
-
-# === ЗАПУСК ===
+# ================== ЗАПУСК С HTTP-СЕРВЕРОМ ДЛЯ RENDER ==================
 if __name__ == "__main__":
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def log_message(self, format, *args):
+            pass
+
+    def start_server():
+        port = int(os.environ.get("PORT", 10000))
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        server.serve_forever()
+
     threading.Thread(target=start_server, daemon=True).start()
-    log.info("🚀 Бот запущен. Отправка каждые 30 минут.")
 
-    # Первый запуск сразу
-    job_main()
-
-    # Каждые 30 минут
-    schedule.every(30).minutes.do(job_main)
-
+    log.info("🚀 Бот запущен как Web Service на Render")
+    job()
+    schedule.every(30).minutes.do(job)
     while True:
         schedule.run_pending()
         time.sleep(1)
+
