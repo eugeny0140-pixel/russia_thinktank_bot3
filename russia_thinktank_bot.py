@@ -8,7 +8,6 @@ from deep_translator import GoogleTranslator
 import schedule
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from datetime import datetime
 
 # === НАСТРОЙКИ ===
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -64,8 +63,8 @@ def send_to_telegram(text):
     except Exception as e:
         log.error(f"❌ Исключение: {e}")
 
-def fetch_and_post():
-    log.info("🔄 Запуск проверки новостей...")
+def job():
+    log.info("🔄 Проверка новостей...")
     headers = {"User-Agent": "Mozilla/5.0"}
     count = 0
     for url in SOURCES:
@@ -118,16 +117,19 @@ class HealthHandler(BaseHTTPRequestHandler):
 def start_server():
     port = int(os.environ.get("PORT", 10000))
     HTTPServer(("0.0.0.0", port), HealthHandler).serve_forever()
-# ================== ЗАПУСК БОТА ==================
+
+# === ЗАПУСК ===
 if __name__ == "__main__":
-    # Запуск HTTP-сервера для Render
     threading.Thread(target=start_server, daemon=True).start()
     log.info("🚀 Бот запущен. Проверка в :00 и :30 каждого часа.")
+
     # Первый запуск при старте
     job()
-    # Точное расписание: каждый час в :00 и :30
+
+    # Точное расписание
     schedule.every().hour.at(":00").do(job)
     schedule.every().hour.at(":30").do(job)
+
     while True:
         schedule.run_pending()
         time.sleep(1)
