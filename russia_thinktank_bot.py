@@ -109,12 +109,11 @@ def fetch_one_per_source():
     return messages
 
 def job_main():
-    """Основная отправка — только в :00 и :30 UTC"""
-    log.info("🔄 Основная проверка новостей...")
+    """Отправка новостей каждые 30 минут"""
+    log.info("🔄 Проверка новостей...")
     messages = fetch_one_per_source()
     count = 0
     for msg, link in messages:
-        # Отправка в чистом тексте (без Markdown)
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         data = {
             "chat_id": CHANNEL_ID,
@@ -130,11 +129,7 @@ def job_main():
         seen_links.add(link)
         count += 1
         time.sleep(2)
-    log.info(f"✅ Основная проверка завершена. Отправлено: {count}")
-
-def job_keepalive():
-    """Проверка каждые 14 минут для активности Render"""
-    log.info("💤 Keep-alive check")
+    log.info(f"✅ Проверка завершена. Отправлено: {count}")
 
 # === HTTP-сервер для Render ===
 class HealthHandler(BaseHTTPRequestHandler):
@@ -151,12 +146,13 @@ def start_server():
 # === ЗАПУСК ===
 if __name__ == "__main__":
     threading.Thread(target=start_server, daemon=True).start()
-    log.info("🚀 Бот запущен. Отправка в :00 и :30 UTC.")
+    log.info("🚀 Бот запущен. Отправка каждые 30 минут.")
 
-    # Расписание БЕЗ тестовой отправки
-    schedule.every().hour.at(":00").do(job_main)
-    schedule.every().hour.at(":30").do(job_main)
-    schedule.every(14).minutes.do(job_keepalive)
+    # Первый запуск сразу
+    job_main()
+
+    # Каждые 30 минут
+    schedule.every(30).minutes.do(job_main)
 
     while True:
         schedule.run_pending()
