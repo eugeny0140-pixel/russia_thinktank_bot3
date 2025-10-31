@@ -99,7 +99,7 @@ def job():
                 send_to_telegram(msg)
                 seen_links.add(link)
                 count += 1
-                time.sleep(1)
+                time.sleep(2)  # ← увеличена задержка до 2 секунд
 
         except Exception as e:
             log.error(f"Ошибка при парсинге {url}: {e}")
