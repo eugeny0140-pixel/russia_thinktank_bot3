@@ -118,19 +118,16 @@ class HealthHandler(BaseHTTPRequestHandler):
 def start_server():
     port = int(os.environ.get("PORT", 10000))
     HTTPServer(("0.0.0.0", port), HealthHandler).serve_forever()
-
-# === ЗАПУСК ===
+# ================== ЗАПУСК БОТА ==================
 if __name__ == "__main__":
+    # Запуск HTTP-сервера для Render
     threading.Thread(target=start_server, daemon=True).start()
     log.info("🚀 Бот запущен. Проверка в :00 и :30 каждого часа.")
-
-    # Запускаем сразу при старте (для теста)
-    fetch_and_post()
-
+    # Первый запуск при старте
+    job()
     # Точное расписание: каждый час в :00 и :30
-    schedule.every().hour.at(":00").do(fetch_and_post)
-    schedule.every().hour.at(":30").do(fetch_and_post)
-
+    schedule.every().hour.at(":00").do(job)
+    schedule.every().hour.at(":30").do(job)
     while True:
         schedule.run_pending()
         time.sleep(1)
