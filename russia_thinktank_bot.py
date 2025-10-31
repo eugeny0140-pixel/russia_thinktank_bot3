@@ -16,7 +16,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не задан")
 
-# Источники с рабочими RSS
+# Источники с рабочими RSS (без Carnegie — 404)
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -27,7 +27,6 @@ SOURCES = [
     {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
     {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
     {"name": "CFR", "url": "https://www.cfr.org/rss/"},
-    {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
     {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
 ]
@@ -54,25 +53,6 @@ def translate(text):
             log.warning(f"MyMemoryTranslator failed: {e2}")
             return text
 
-def escape_md_v2(text):
-    for c in r'_*[]()~`>#+-=|{}.!':
-        text = text.replace(c, '\\' + c)
-    return text
-
-def send_to_telegram(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHANNEL_ID,
-        "text": text,
-        "parse_mode": "MarkdownV2",
-        "disable_web_page_preview": True,
-    }
-    try:
-        r = requests.post(url, data=data, timeout=10)
-        log.info("✅ Отправлено" if r.status_code == 200 else f"❌ Ошибка: {r.text}")
-    except Exception as e:
-        log.error(f"❌ Исключение: {e}")
-
 def get_prefix(name):
     name = name.lower()
     if "e3g" in name: return "e3g"
@@ -84,7 +64,6 @@ def get_prefix(name):
     if "atlantic" in name: return "atlanticcouncil"
     if "rand" in name: return "rand"
     if "cfr" in name: return "cfr"
-    if "carnegie" in name: return "carnegie"
     if "economist" in name: return "economist"
     if "bloomberg" in name: return "bloomberg"
     return name.split()[0].lower()
@@ -130,28 +109,32 @@ def fetch_one_per_source():
     return messages
 
 def job_main():
-    """Основная отправка — только в :00 и :30"""
+    """Основная отправка — только в :00 и :30 UTC"""
     log.info("🔄 Основная проверка новостей...")
     messages = fetch_one_per_source()
     count = 0
     for msg, link in messages:
-        safe_msg = escape_md_v2(msg)
-        send_to_telegram(safe_msg)
+        # Отправка в чистом тексте (без Markdown)
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        data = {
+            "chat_id": CHANNEL_ID,
+            "text": msg,
+            "disable_web_page_preview": True,
+        }
+        try:
+            r = requests.post(url, data=data, timeout=10)
+            log.info("✅ Отправлено" if r.status_code == 200 else f"❌ Ошибка: {r.text}")
+        except Exception as e:
+            log.error(f"❌ Исключение: {e}")
+
         seen_links.add(link)
         count += 1
         time.sleep(2)
     log.info(f"✅ Основная проверка завершена. Отправлено: {count}")
 
 def job_keepalive():
-    """Проверка каждые 14 минут для активности Render (без отправки)"""
-    log.info("💤 Keep-alive check (источники не парсятся)")
-
-def test_send():
-    """Тестовая отправка при запуске"""
-    log.info("🧪 Тестовая отправка...")
-    test_msg = "✅ Бот запущен и работает. Следующая отправка в :00 или :30 UTC."
-    safe_msg = escape_md_v2(test_msg)
-    send_to_telegram(safe_msg)
+    """Проверка каждые 14 минут для активности Render"""
+    log.info("💤 Keep-alive check")
 
 # === HTTP-сервер для Render ===
 class HealthHandler(BaseHTTPRequestHandler):
@@ -170,14 +153,9 @@ if __name__ == "__main__":
     threading.Thread(target=start_server, daemon=True).start()
     log.info("🚀 Бот запущен. Отправка в :00 и :30 UTC.")
 
-    # Тестовая отправка при старте
-    test_send()
-
-    # Основное расписание (UTC)
+    # Расписание БЕЗ тестовой отправки
     schedule.every().hour.at(":00").do(job_main)
     schedule.every().hour.at(":30").do(job_main)
-
-    # Keep-alive для Render (каждые 14 минут)
     schedule.every(14).minutes.do(job_keepalive)
 
     while True:
