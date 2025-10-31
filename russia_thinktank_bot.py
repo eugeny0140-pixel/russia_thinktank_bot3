@@ -114,6 +114,7 @@ def job_main():
     messages = fetch_one_per_source()
     count = 0
     for msg, link in messages:
+        # 🔥 ИСПРАВЛЕНО: убраны пробелы в URL
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         data = {
             "chat_id": CHANNEL_ID,
@@ -157,4 +158,3 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
-
