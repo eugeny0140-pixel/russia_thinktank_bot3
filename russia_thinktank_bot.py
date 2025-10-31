@@ -74,7 +74,7 @@ def fetch_one_per_source():
     messages = []
     for src in SOURCES:
         try:
-            resp = requests.get(src["url"], timeout=20, headers=headers)
+            resp = requests.get(src["url"], timeout=14, headers=headers)
             soup = BeautifulSoup(resp.content, "xml")
             item = soup.find("item")
             if not item:
@@ -157,3 +157,4 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
+
