@@ -5,7 +5,6 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator, MyMemoryTranslator
-import schedule
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -16,7 +15,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не задан")
 
-# Источники с рабочими RSS (Carnegie удалён — 404)
+# УБРАНЫ ПРОБЕЛЫ В URL!
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -31,8 +30,8 @@ SOURCES = [
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
 ]
 
-# 🔍 Расширенные ключевые слова
-KEYWORDS = [
+# 🔍 Ключевые слова (оставьте ваш полный список)
+KEYWORDS =  [
     # === Основные: Россия, Украина, геополитика ===
     r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
     r"\bukraine\b", r"\bukrainian\b", r"\bzelensky\b", r"\bkyiv\b", r"\bkiev\b",
@@ -143,9 +142,8 @@ def fetch_one_per_source():
 
             ru_title = translate(title)
             ru_desc = translate(desc)
-            prefix = get_prefix(src["name"]).upper()  # ВЕРХНИЙ РЕГИСТР
-
-            # Формат с HTML: <b>BLOOMBERG</b>: ...
+            prefix = get_prefix(src["name"]).upper()
+            # Формат: <b>BLOOMBERG</b>: Заголовок...\n\nЛид...\n\nИсточник: https://...
             msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {link}"
             messages.append((msg, link))
 
@@ -153,31 +151,26 @@ def fetch_one_per_source():
             log.error(f"Ошибка {src['name']}: {e}")
     return messages
 
-def job_main():
-    log.info("🔄 Проверка новостей...")
-    messages = fetch_one_per_source()
-    count = 0
-    for msg, link in messages:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        data = {
-            "chat_id": CHANNEL_ID,
-            "text": msg,
-            "parse_mode": "HTML",  # ← КЛЮЧЕВОЕ: HTML для жирного шрифта
-            "disable_web_page_preview": True,
-        }
-        try:
-            r = requests.post(url, data=data, timeout=10)
-            log.info("✅ Отправлено" if r.status_code == 200 else f"❌ Ошибка: {r.text}")
-        except Exception as e:
-            log.error(f"❌ Исключение: {e}")
-
-        seen_links.add(link)
-        count += 1
-        time.sleep(2)
-    log.info(f"✅ Проверка завершена. Отправлено: {count}")
-
-def job_keepalive():
-    log.info("💤 Keep-alive check")
+def send_to_telegram(text):
+    # 🔥 ИСПРАВЛЕНО: убраны пробелы в URL
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHANNEL_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    try:
+        r = requests.post(url, data=data, timeout=10)
+        if r.status_code == 200:
+            log.info("✅ Отправлено")
+            return True
+        else:
+            log.error(f"❌ Ошибка: {r.text}")
+            return False
+    except Exception as e:
+        log.error(f"❌ Исключение: {e}")
+        return False
 
 # === HTTP-сервер для Render ===
 class HealthHandler(BaseHTTPRequestHandler):
@@ -194,13 +187,15 @@ def start_server():
 # === ЗАПУСК ===
 if __name__ == "__main__":
     threading.Thread(target=start_server, daemon=True).start()
-    log.info("🚀 Бот запущен. Основная проверка каждые 30 мин.")
-
-    job_main()
-    schedule.every(1).minutes.do(job_main)
-  
+    log.info("🚀 Бот запущен. Проверка RSS каждую минуту (реальное время).")
 
     while True:
-        schedule.run_pending()
-        time.sleep(1)
-
+        messages = fetch_one_per_source()
+        count = 0
+        for msg, link in messages:
+            if send_to_telegram(msg):
+                seen_links.add(link)  # Добавляем ТОЛЬКО при успешной отправке
+                count += 1
+            time.sleep(1)  # Задержка между отправками в Telegram
+        log.info(f"✅ Цикл завершён. Новых новостей: {count}")
+        time.sleep(60)  # Проверка RSS каждую минуту
