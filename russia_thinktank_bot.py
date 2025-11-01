@@ -146,7 +146,7 @@ def fetch_one_per_source():
             prefix = get_prefix(src["name"]).upper()  # ВЕРХНИЙ РЕГИСТР
 
             # Формат с HTML: <b>BLOOMBERG</b>: ...
-            msg = f"<b>**{prefix}**</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {link}"
+            msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {link}"
             messages.append((msg, link))
 
         except Exception as e:
@@ -203,3 +203,4 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
+
