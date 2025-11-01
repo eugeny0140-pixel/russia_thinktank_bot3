@@ -16,7 +16,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не задан")
 
-# Источники с рабочими RSS (без Carnegie — 404)
+# Источники с рабочими RSS (Carnegie удалён — 404)
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -31,50 +31,55 @@ SOURCES = [
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
 ]
 
+# 🔍 Расширенные ключевые слова
 KEYWORDS = [
-   # Россия и её синонимы
-    r"\brussia\b", r"\brussian\b", r"\brussians\b", r"\brus\b", r"\brus'?sia\b",
-    
-    # Ключевые лица
-    r"\bputin\b", r"\bvladimir putin\b", r"\bmedvedev\b", r"\bdmitry medvedev\b",
-    r"\blavrov\b", r"\bsergey lavrov\b", r"\bshoigu\b", r"\bsergei shoigu\b",
-    r"\bpeskov\b", r"\bdmitry peskov\b", r"\bnaryshkin\b", r"\bpatrushev\b",
-    r"\bprigozhin\b", r"\bwagner\b", r"\bgazprom\b", r"\brosgaz\b",
-    
-    # География РФ и регионы
-    r"\bmoscow\b", r"\bst petersburg\b", r"\bst\. petersburg\b", r"\bkrasnoyarsk\b",
-    r"\bchechnya\b", r"\bgrozny\b", r"\bdagestan\b", r"\bkaliningrad\b",
-    r"\bcrimea\b", r"\bsevastopol\b", r"\bkrasnodar\b", r"\birkutsk\b",
-    
-    # Украина и связанные регионы
-    r"\bukraine\b", r"\bukrainian\b", r"\bkyiv\b", r"\bkiev\b", r"\bkharkiv\b",
-    r"\bodesa\b", r"\bodessa\b", r"\bdonbas\b", r"\bdonetsk\b", r"\bluhansk\b",
-    r"\bzelensky\b", r"\bvolodymyr zelensky\b", r"\bkyiv\b",
-    
-    # Санкции и экономика
-    r"\bsanction[s]?\b", r"\bembargo\b", r"\brestrict\b", r"\bprohibit\b",
-    r"\bruble\b", r"\brub\b", r"\brussian ruble\b", r"\beconomy\b", r"\bfinance\b",
-    r"\boil\b", r"\bgas\b", r"\bnord\s?stream\b", r"\byamal\b", r"\bsiberia\b",
-    r"\bimf\b", r"\bworld bank\b", r"\bswift\b", r"\bcentral bank\b",
-    
-    # Военные действия и безопасность
-    r"\bwar\b", r"\bconflict\b", r"\bmilitary\b", r"\barmy\b", r"\bdefense\b",
-    r"\battack\b", r"\bstrike\b", r"\binvasion\b", r"\boccupation\b",
-    r"\bnuclear\b", r"\bmissile\b", r"\bdrone\b", r"\btank\b", r"\bsoldier[s]?\b",
-    
-    # Международные организации и страны-реакторы
-    r"\bnato\b", r"\bnorth atlantic treaty\b", r"\beuropa\b", r"\beuropean union\b",
-    r"\bgermany\b", r"\bfrance\b", r"\busa\b", r"\bunited states\b", r"\buk\b",
-    r"\bbritain\b", r"\bcanada\b", r"\bjapan\b", r"\bsouth korea\b", r"\bpoland\b",
-    r"\bfinland\b", r"\bsweden\b", r"\bestonia\b", r"\blatvia\b", r"\blithuania\b",
-    
-    # Дипломатия и политика
-    r"\bdiplomat\b", r"\btalks\b", r"\bnegotiat\b", r"\bmeeting\b", r"\bsummit\b",
-    r"\bforeign minister\b", r"\bforeign policy\b", r"\bgeopolitic\b", r"\bsecurity\b",
-    
-    # Исторические и идеологические термины
-    r"\bsoviet\b", r"\bussr\b", r"\bpost\W?soviet\b", r"\bcommunist\b", r"\bkremlin\b"
+    # === Основные: Россия, Украина, геополитика ===
+    r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
+    r"\bukraine\b", r"\bukrainian\b", r"\bzelensky\b", r"\bkyiv\b", r"\bkiev\b",
+    r"\bcrimea\b", r"\bdonbas\b", r"\bsanction[s]?\b", r"\bgazprom\b",
+    r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bshoigu\b",
+    r"\bmedvedev\b", r"\bpeskov\b", r"\bnato\b", r"\beuropa\b", r"\busa\b",
+    r"\bsoviet\b", r"\bussr\b", r"\bpost\W?soviet\b",
 
+    # === 1. СВО и Война ===
+    r"\bsvo\b", r"\bспецоперация\b", r"\bspecial military operation\b", 
+    r"\bвойна\b", r"\bwar\b", r"\bconflict\b", r"\bконфликт\b", 
+    r"\bнаступление\b", r"\boffensive\b", r"\bатака\b", r"\battack\b", 
+    r"\bудар\b", r"\bstrike\b", r"\bобстрел\b", r"\bshelling\b", 
+    r"\bдрон\b", r"\bdrone\b", r"\bmissile\b", r"\bракета\b", 
+    r"\bэскалация\b", r"\bescalation\b", r"\bмобилизация\b", r"\bmobilization\b", 
+    r"\bфронт\b", r"\bfrontline\b", r"\bзахват\b", r"\bcapture\b", 
+    r"\bосвобождение\b", r"\bliberation\b", r"\bбой\b", r"\bbattle\b", 
+    r"\bпотери\b", r"\bcasualties\b", r"\bпогиб\b", r"\bkilled\b", 
+    r"\bранен\b", r"\binjured\b", r"\bпленный\b", r"\bprisoner of war\b", 
+    r"\bпереговоры\b", r"\btalks\b", r"\bперемирие\b", r"\bceasefire\b", 
+    r"\bоружие\b", r"\bweapons\b", r"\bпоставки\b", r"\bsupplies\b", 
+    r"\bhimars\b", r"\batacms\b",
+
+    # === 2. Криптовалюта ===
+    r"\bbitcoin\b", r"\bbtc\b", r"\bбиткоин\b", 
+    r"\bethereum\b", r"\beth\b", r"\bэфир\b", 
+    r"\bbinance coin\b", r"\bbnb\b", r"\busdt\b", r"\btether\b", 
+    r"\bxrp\b", r"\bripple\b", r"\bcardano\b", r"\bada\b", 
+    r"\bsolana\b", r"\bsol\b", r"\bdoge\b", r"\bdogecoin\b", 
+    r"\bavalanche\b", r"\bavax\b", r"\bpolkadot\b", r"\bdot\b", 
+    r"\bchainlink\b", r"\blink\b", r"\btron\b", r"\btrx\b", 
+    r"\bcbdc\b", r"\bcentral bank digital currency\b", r"\bцифровой рубль\b", 
+    r"\bdigital yuan\b", r"\beuro digital\b", r"\bdefi\b", r"\bдецентрализованные финансы\b", 
+    r"\bnft\b", r"\bnon-fungible token\b", r"\bsec\b", r"\bцб рф\b", 
+    r"\bрегуляция\b", r"\bregulation\b", r"\bзапрет\b", r"\bban\b", 
+    r"\bмайнинг\b", r"\bmining\b", r"\bhalving\b", r"\bхалвинг\b", 
+    r"\bволатильность\b", r"\bvolatility\b", r"\bcrash\b", r"\bкрах\b",
+
+    # === 3. Пандемия и биобезопасность ===
+    r"\bpandemic\b", r"\bпандемия\b", r"\boutbreak\b", r"\bвспышка\b", 
+    r"\bvirus\b", r"\bвирус\b", r"\bvaccine\b", r"\bвакцина\b", 
+    r"\bbooster\b", r"\bбустер\b", r"\bquarantine\b", r"\bкарантин\b", 
+    r"\blockdown\b", r"\bлокдаун\b", r"\bmutation\b", r"\bмутация\b", 
+    r"\bstrain\b", r"\bштамм\b", r"\bomicron\b", r"\bdelta\b", 
+    r"\bbiosafety\b", r"\bбиобезопасность\b", r"\blab leak\b", r"\bлабораторная утечка\b", 
+    r"\bgain of function\b", r"\bусиление функции\b", r"\bwho\b", r"\bвоз\b", 
+    r"\binfection rate\b", r"\bзаразность\b", r"\bhospitalization\b", r"\bгоспитализация\b",
 ]
 
 seen_links = set()
@@ -82,7 +87,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger()
 
 def translate(text):
-    """Перевод с резервным MyMemoryTranslator"""
     try:
         return GoogleTranslator(source='auto', target='ru').translate(text)
     except Exception as e1:
@@ -109,12 +113,11 @@ def get_prefix(name):
     return name.split()[0].lower()
 
 def fetch_one_per_source():
-    """Парсит по одной свежей статье из каждого источника"""
     headers = {"User-Agent": "Mozilla/5.0"}
     messages = []
     for src in SOURCES:
         try:
-            resp = requests.get(src["url"], timeout=14, headers=headers)
+            resp = requests.get(src["url"], timeout=20, headers=headers)
             soup = BeautifulSoup(resp.content, "xml")
             item = soup.find("item")
             if not item:
@@ -140,8 +143,10 @@ def fetch_one_per_source():
 
             ru_title = translate(title)
             ru_desc = translate(desc)
-          prefix = get_source_prefix(src["name"]).upper()
-           msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_lead}\n\nИсточник: link"
+            prefix = get_prefix(src["name"]).upper()  # ВЕРХНИЙ РЕГИСТР
+
+            # Формат с HTML: <b>BLOOMBERG</b>: ...
+            msg = f"<b>**{prefix}**</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {link}"
             messages.append((msg, link))
 
         except Exception as e:
@@ -149,16 +154,15 @@ def fetch_one_per_source():
     return messages
 
 def job_main():
-    """Отправка новостей каждые 30 минут"""
     log.info("🔄 Проверка новостей...")
     messages = fetch_one_per_source()
     count = 0
     for msg, link in messages:
-        # 🔥 ИСПРАВЛЕНО: убраны пробелы в URL
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         data = {
             "chat_id": CHANNEL_ID,
             "text": msg,
+            "parse_mode": "HTML",  # ← КЛЮЧЕВОЕ: HTML для жирного шрифта
             "disable_web_page_preview": True,
         }
         try:
@@ -171,6 +175,9 @@ def job_main():
         count += 1
         time.sleep(2)
     log.info(f"✅ Проверка завершена. Отправлено: {count}")
+
+def job_keepalive():
+    log.info("💤 Keep-alive check")
 
 # === HTTP-сервер для Render ===
 class HealthHandler(BaseHTTPRequestHandler):
@@ -187,13 +194,11 @@ def start_server():
 # === ЗАПУСК ===
 if __name__ == "__main__":
     threading.Thread(target=start_server, daemon=True).start()
-    log.info("🚀 Бот запущен. Отправка каждые 30 минут.")
+    log.info("🚀 Бот запущен. Основная проверка каждые 30 мин.")
 
-    # Первый запуск сразу
     job_main()
-
-    # Каждые 30 минут
     schedule.every(1).minutes.do(job_main)
+  
 
     while True:
         schedule.run_pending()
