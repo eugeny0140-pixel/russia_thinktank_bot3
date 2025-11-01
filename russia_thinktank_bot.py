@@ -133,7 +133,11 @@ def fetch_one_per_source():
             title = (item.title and item.title.get_text().strip()) or ""
             if not title or not link or link in seen_links:
                 continue
-
+# В fetch_one_per_source(), после получения title:
+log.info(f"🔍 Найдена статья: {title}")
+if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
+    log.info("⏭ Пропущена: не соответствует ключевым словам")
+    continue
             if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                 continue
 
@@ -206,3 +210,4 @@ if __name__ == "__main__":
             time.sleep(1)
         log.info(f"✅ Цикл завершён. Новых новостей: {count}")
         time.sleep(60)
+
