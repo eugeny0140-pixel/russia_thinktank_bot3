@@ -112,6 +112,10 @@ def get_prefix(name):
     if "bloomberg" in name: return "bloomberg"
     return name.split()[0].lower()
 
+def escape_markdown(text):
+    """Экранируем спецсимволы для Markdown, кроме **...**"""
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
 def fetch_one_per_source():
     headers = {"User-Agent": "Mozilla/5.0"}
     messages = []
@@ -145,8 +149,12 @@ def fetch_one_per_source():
             ru_desc = translate(desc)
             prefix = get_prefix(src["name"]).upper()  # ВЕРХНИЙ РЕГИСТР
 
-            # Формат: **ATLANTICCOUNCIL**: Заголовок...
-            msg = f"**{prefix}**: {ru_title}\n\n{ru_desc}\n\nИсточник ({link})"
+            # Экранируем только текст, не трогая **...**
+            safe_title = escape_markdown(ru_title)
+            safe_desc = escape_markdown(ru_desc)
+
+            # Формат: **BLOOMBERG**: Заголовок...
+            msg = f"**{prefix}**: {safe_title}\n\n{safe_desc}\n\nИсточник ({link})"
             messages.append((msg, link))
 
         except Exception as e:
@@ -162,7 +170,7 @@ def job_main():
         data = {
             "chat_id": CHANNEL_ID,
             "text": msg,
-            "parse_mode": "Markdown",  # используем Markdown для жирного шрифта
+            "parse_mode": "Markdown",  # для жирного шрифта
             "disable_web_page_preview": True,
         }
         try:
