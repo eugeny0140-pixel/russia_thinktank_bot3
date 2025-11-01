@@ -102,7 +102,7 @@ def fetch_one_per_source():
             ru_title = translate(title)
             ru_desc = translate(desc)
             prefix = get_prefix(src["name"]).upper()
-            msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_desc}\n\nИсточник ({link})"
+            msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {link}"
             messages.append((msg, link))
 
         except Exception as e:
@@ -150,3 +150,4 @@ if __name__ == "__main__":
             time.sleep(1)  # задержка между отправками в Telegram
         log.info(f"✅ Цикл завершён. Новых новостей: {count}")
         time.sleep(60)  # проверка RSS каждые 60 секунд
+
