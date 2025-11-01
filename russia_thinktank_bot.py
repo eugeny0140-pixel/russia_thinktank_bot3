@@ -32,9 +32,39 @@ SOURCES = [
 
 # 🔍 Ключевые слова (сокращённый пример — добавьте полный список при необходимости)
 KEYWORDS = [
-    r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bukraine\b", r"\bzelensky\b",
-    r"\bkremlin\b", r"\bmoscow\b", r"\bsanction[s]?\b", r"\bgazprom\b",
-    r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bnato\b", r"\bwar\b",
+     # === Основные: Россия, Украина, геополитика ===
+    r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
+    r"\bukraine\b", r"\bukrainian\b", r"\bzelensky\b", r"\bkyiv\b", r"\bkiev\b",
+    r"\bcrimea\b", r"\bdonbas\b", r"\bsanction[s]?\b", r"\bgazprom\b",
+    r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bshoigu\b",
+    r"\bmedvedev\b", r"\bpeskov\b", r"\bnato\b", r"\beuropa\b", r"\busa\b",
+    r"\bsoviet\b", r"\bussr\b", r"\bpost\W?soviet\b",
+
+    # === 1. СВО и Война ===
+    r"\bsvo\b", r"\bспецоперация\b", r"\bspecial military operation\b", 
+    r"\bвойна\b", r"\bwar\b", r"\bconflict\b", r"\bконфликт\b", 
+    r"\bнаступление\b", r"\boffensive\b", r"\bатака\b", r"\battack\b", 
+    r"\bудар\b", r"\bstrike\b", r"\bобстрел\b", r"\bshelling\b", 
+    r"\bдрон\b", r"\bdrone\b", r"\bmissile\b", r"\bракета\b", 
+    r"\bэскалация\b", r"\bescalation\b", r"\bмобилизация\b", r"\bmobilization\b", 
+    r"\bфронт\b", r"\bfrontline\b", r"\bзахват\b", r"\bcapture\b", 
+    r"\bосвобождение\b", r"\bliberation\b", r"\bбой\b", r"\bbattle\b", 
+    r"\bпотери\b", r"\bcasualties\b", r"\bпогиб\b", r"\bkilled\b", 
+    r"\bранен\b", r"\binjured\b", r"\bпленный\b", r"\bprisoner of war\b", 
+    r"\bпереговоры\b", r"\btalks\b", r"\bперемирие\b", r"\bceasefire\b", 
+    r"\bоружие\b", r"\bweapons\b", r"\bпоставки\b", {"name": "E3G", "url": "https://www.e3g.org/feed/"},
+    {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
+    {"name": "Reuters Institute", "url": "https://reutersinstitute.politics.ox.ac.uk/rss.xml"},
+    {"name": "Bruegel", "url": "https://www.bruegel.org/rss.xml"},
+    {"name": "Chatham House", "url": "https://www.chathamhouse.org/rss.xml"},
+    {"name": "CSIS", "url": "https://www.csis.org/rss.xml"},
+    {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
+    {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
+    {"name": "CFR", "url": "https://www.cfr.org/rss/"},
+    {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
+    {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
+]
+r"\bnato\b", r"\bwar\b",
     r"\bsoviet\b", r"\bussr\b", r"\bpost\W?soviet\b"
 ]
 
@@ -150,3 +180,4 @@ if __name__ == "__main__":
             time.sleep(1)
         log.info(f"✅ Цикл завершён. Новых новостей: {count}")
         time.sleep(60)
+
