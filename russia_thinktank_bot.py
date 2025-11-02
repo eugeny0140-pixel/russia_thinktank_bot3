@@ -3,6 +3,9 @@ import re
 import time
 import logging
 import requests
+import hashlib
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -16,13 +19,12 @@ if not TELEGRAM_TOKEN:
 # Два канала для дублирования
 CHANNEL_IDS = ["@time_n_John", "@finanosint"]
 
-# Проверка lxml
-try:
-    BeautifulSoup(b"<a></a>", "xml")
-except Exception:
-    raise RuntimeError("❌ Установите lxml: pip install lxml")
+# Подключение к PostgreSQL (Render автоматически задаёт DATABASE_URL)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL не задан. Убедитесь, что подключена PostgreSQL-база.")
 
-# ✅ Исправленные источники без пробелов и с рабочими RSS
+# ✅ Исправленные источники — убраны пробелы и исправлен RAND
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -49,7 +51,6 @@ KEYWORDS = [
    r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bshoigu\b",
    r"\bmedvedev\b", r"\bpeskov\b", r"\bnato\b", r"\beuropa\b", r"\busa\b",
    r"\bsoviet\b", r"\bussr\b", r"\bpost\W?soviet\b",
-   # === СВО и Война ===
    r"\bsvo\b", r"\bспецоперация\b", r"\bspecial military operation\b",
    r"\bвойна\b", r"\bwar\b", r"\bconflict\b", r"\bконфликт\b",
    r"\bнаступление\b", r"\boffensive\b", r"\bатака\b", r"\battack\b",
@@ -64,7 +65,6 @@ KEYWORDS = [
    r"\bсанкции\b", r"\bsanctions\b", r"\bоружие\b", r"\bweapons\b",
    r"\bпоставки\b", r"\bsupplies\b", r"\bhimars\b", r"\batacms\b",
    r"\bhour ago\b", r"\bчас назад\b", r"\bminutos atrás\b", r"\b小时前\b",
-   # === Криптовалюта ===
    r"\bbitcoin\b", r"\bbtc\b", r"\bбиткоин\b", r"\b比特币\b",
    r"\bethereum\b", r"\beth\b", r"\bэфир\b", r"\b以太坊\b",
    r"\bbinance coin\b", r"\bbnb\b", r"\busdt\b", r"\btether\b",
@@ -79,7 +79,6 @@ KEYWORDS = [
    r"\bмайнинг\b", r"\bmining\b", r"\bhalving\b", r"\bхалвинг\b",
    r"\bволатильность\b", r"\bvolatility\b", r"\bcrash\b", r"\bкрах\b",
    r"\b刚刚\b", r"\bدقائق مضت\b",
-   # === Пандемия и болезни ===
    r"\bpandemic\b", r"\bпандемия\b", r"\b疫情\b", r"\bجائحة\b",
    r"\boutbreak\b", r"\bвспышка\b", r"\bэпидемия\b", r"\bepidemic\b",
    r"\bvirus\b", r"\bвирус\b", r"\bвирусы\b", r"\b变异株\b",
@@ -98,10 +97,31 @@ KEYWORDS = [
    r"\bقبل ساعات\b", r"\b刚刚报告\b"
 ]
 
-seen_links = set()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger()
 
+# === ФУНКЦИИ РАБОТЫ С БД ===
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
+
+def is_link_seen(link: str) -> bool:
+    link_hash = hashlib.sha256(link.encode('utf-8')).hexdigest()
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM seen_links WHERE link_hash = %s", (link_hash,))
+            return cur.fetchone() is not None
+
+def mark_link_as_seen(link: str):
+    link_hash = hashlib.sha256(link.encode('utf-8')).hexdigest()
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO seen_links (link_hash) VALUES (%s) ON CONFLICT DO NOTHING",
+                (link_hash,)
+            )
+        conn.commit()
+
+# === ОСТАЛЬНЫЕ ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ, КРОМЕ УБРАННОГО seen_links) ===
 def translate(text):
     if not text or not text.strip():
         return text
@@ -163,7 +183,8 @@ def fetch_all_relevant_news():
                     continue
                 link = link.split('?')[0].rstrip('/')
 
-                if link in seen_links:
+                # Проверка через БД
+                if is_link_seen(link):
                     continue
 
                 title = (item.title and item.title.get_text().strip()) or ""
@@ -196,7 +217,7 @@ def fetch_all_relevant_news():
 def send_to_telegram(text):
     success = True
     for channel_id in CHANNEL_IDS:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"  # ← УБРАНЫ ПРОБЕЛЫ!
         data = {
             "chat_id": channel_id,
             "text": text,
@@ -227,6 +248,21 @@ def start_server():
     HTTPServer(("0.0.0.0", port), HealthHandler).serve_forever()
 
 if __name__ == "__main__":
+    # Создаём таблицу при запуске (если ещё не создана)
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS seen_links (
+                        link_hash VARCHAR(64) PRIMARY KEY,
+                        processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                """)
+            conn.commit()
+    except Exception as e:
+        log.error(f"Ошибка при создании таблицы: {e}")
+        raise
+
     threading.Thread(target=start_server, daemon=True).start()
     log.info("🚀 Бот запущен. Проверка RSS каждую минуту.")
 
@@ -235,7 +271,7 @@ if __name__ == "__main__":
         count = 0
         for msg, link in messages:
             if send_to_telegram(msg):
-                seen_links.add(link)
+                mark_link_as_seen(link)
                 count += 1
             time.sleep(1)
         log.info(f"✅ Цикл завершён. Новых новостей: {count}")
