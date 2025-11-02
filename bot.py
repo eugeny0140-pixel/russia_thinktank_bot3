@@ -14,9 +14,12 @@ import threading
 # --- Настройки ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not TELEGRAM_TOKEN or not DATABASE_URL:
+    raise ValueError("❌ Переменные TELEGRAM_BOT_TOKEN и DATABASE_URL обязательны!")
+
 CHANNEL_IDS = ["@time_n_John", "@finanosint"]
 
-# Исправленные URL (убраны пробелы, исправлен RAND)
+# Исправленные URL — пробелы удалены
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -27,7 +30,7 @@ SOURCES = [
     {"name": "Chatham House – International Security", "url": "https://www.chathamhouse.org/topics/international-security/rss.xml"},
     {"name": "CSIS", "url": "https://www.csis.org/rss.xml"},
     {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
-    {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},  # Исправлено
+    {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
     {"name": "CFR", "url": "https://www.cfr.org/rss/"},
     {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
@@ -88,14 +91,12 @@ KEYWORDS = [
     r"\bقبل ساعات\b", r"\b刚刚报告\b"
 ]
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 log = logging.getLogger()
 
-# Интервал между проверками (в секундах). Для "реального времени" — 10–15 сек.
-FETCH_INTERVAL = 14
+FETCH_INTERVAL = 14  # секунд
 
-# --- Функции работы с БД ---
+# --- БД ---
 def get_db_conn():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
@@ -131,7 +132,7 @@ def translate(text):
             log.debug(f"MyMemoryTranslator failed: {e2}")
             return clean_text
 
-# --- Префикс источника ---
+# --- Префикс ---
 def get_prefix(name):
     name_lower = name.lower()
     prefixes = {
@@ -160,7 +161,7 @@ def fetch_news():
     messages = []
     for src in SOURCES:
         try:
-            url = src["url"]
+            url = src["url"].strip()  # ← .strip() на случай опечаток
             resp = requests.get(url, timeout=20, headers=headers)
             if resp.status_code != 200:
                 log.warning(f"{src['name']}: HTTP {resp.status_code}")
@@ -177,8 +178,7 @@ def fetch_news():
                 link = link_tag.get_text().strip() if link_tag else ""
                 if not link:
                     continue
-                # Сохраняем полную ссылку для уникальности (без обрезки параметров)
-                canonical_link = link.split('#')[0]  # убираем якоря, но оставляем параметры
+                canonical_link = link.split('#')[0]
 
                 if is_seen(canonical_link):
                     continue
@@ -190,11 +190,11 @@ def fetch_news():
 
                 desc_tag = item.find("description")
                 desc_raw = desc_tag.get_text() if desc_tag else ""
-                desc_soup = BeautifulSoup(desc_raw, "html.parser")
+                desc_clean = html.unescape(desc_raw)  # ← обработка HTML-сущностей в описании
+                desc_soup = BeautifulSoup(desc_clean, "html.parser")
                 desc_text = desc_soup.get_text().strip()
                 desc = re.split(r'(?<=[.!?])\s+', desc_text)[0] if desc_text else desc_text[:200]
 
-                # Проверяем ключевые слова в заголовке И описании
                 full_text = f"{title} {desc}"
                 if not any(re.search(kw, full_text, re.IGNORECASE) for kw in KEYWORDS):
                     continue
@@ -217,7 +217,7 @@ def fetch_news():
 def send_telegram(text):
     success = True
     for cid in CHANNEL_IDS:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"  # Исправлено: убраны пробелы
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"  # ← КРИТИЧЕСКИ ВАЖНО: без пробелов!
         data = {
             "chat_id": cid,
             "text": text,
@@ -236,7 +236,7 @@ def send_telegram(text):
             success = False
     return success
 
-# --- Health check для хостинга (например, Render) ---
+# --- Health check ---
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -249,7 +249,6 @@ def start_server():
 
 # --- Запуск ---
 if __name__ == "__main__":
-    # Создание таблицы
     with get_db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -260,7 +259,6 @@ if __name__ == "__main__":
             """)
         conn.commit()
 
-    # Запуск health-check сервера в фоне
     threading.Thread(target=start_server, daemon=True).start()
     log.info("🚀 Бот запущен. Health-check на порту $PORT")
 
@@ -268,13 +266,12 @@ if __name__ == "__main__":
         try:
             news_items = fetch_news()
             for msg, link in news_items:
-                # Сначала помечаем как обработанное — чтобы избежать дубликатов при сбое
                 mark_seen(link)
                 if not send_telegram(msg):
-                    log.warning(f"Сообщение отправлено в БД, но не в Telegram: {link}")
-                time.sleep(1)  # пауза между отправками
-            log.info(f"✅ Цикл завершён. Найдено: {len(news_items)} новых новостей.")
+                    log.warning(f"Сообщение сохранено, но не отправлено в Telegram: {link}")
+                time.sleep(1)
+            log.info(f"✅ Цикл завершён. Новых новостей: {len(news_items)}")
         except Exception as e:
-            log.exception(f"Критическая ошибка в основном цикле: {e}")
+            log.exception(f"Критическая ошибка: {e}")
 
         time.sleep(FETCH_INTERVAL)
