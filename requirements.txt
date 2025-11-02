@@ -1,4 +1,5 @@
-lxml
 requests
 beautifulsoup4
+lxml
 deep-translator
+psycopg2-binary
