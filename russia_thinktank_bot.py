@@ -4,7 +4,7 @@ import time
 import logging
 import requests
 from bs4 import BeautifulSoup
-from deep_translator import MyMemoryTranslator
+from deep_translator import GoogleTranslator, MyMemoryTranslator
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -15,7 +15,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не задан")
 
-# ✅ Исправленные источники: без пробелов, с рабочими RSS, включая тематические от Chatham House
+# ✅ Исправленные источники: без пробелов, с рабочими RSS
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -31,7 +31,7 @@ SOURCES = [
     {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
     {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
-    # BBC Future Planet: используем ближайший тематический RSS от BBC News
+    # BBC Future Planet — используем тематический RSS по науке и окружающей среде
     {"name": "BBC Future Planet", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
 ]
 
@@ -100,16 +100,14 @@ def translate(text):
     if not text or not text.strip():
         return text
     try:
-        # Сначала пробуем Google с автоопределением языка
         return GoogleTranslator(source='auto', target='ru').translate(text)
     except Exception as e1:
         log.warning(f"GoogleTranslator failed: {e1}")
         try:
-            # Затем MyMemory с автоопределением (может не поддерживаться — ловим ошибку)
             return MyMemoryTranslator(source='auto', target='ru').translate(text)
         except Exception as e2:
             log.warning(f"MyMemoryTranslator failed: {e2}")
-            return text  # если оба не сработали — оставляем как есть
+            return text
 
 def get_prefix(name):
     name = name.lower()
@@ -158,11 +156,9 @@ def fetch_one_per_source():
             if not title:
                 continue
 
-            # Проверка по ключевым словам
             if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                 continue
 
-            # Извлечение описания
             desc = ""
             desc_tag = item.find("description")
             if desc_tag:
@@ -172,7 +168,6 @@ def fetch_one_per_source():
             if not desc.strip():
                 continue
 
-            # Перевод
             ru_title = translate(title).replace("\\", "")
             ru_desc = translate(desc).replace("\\", "")
 
@@ -231,4 +226,3 @@ if __name__ == "__main__":
             time.sleep(1)
         log.info(f"✅ Цикл завершён. Новых новостей: {count}")
         time.sleep(60)
-
