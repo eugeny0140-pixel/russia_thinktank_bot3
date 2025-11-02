@@ -97,12 +97,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger()
 
 def translate(text):
-    """Переводит текст на русский с помощью MyMemoryTranslator (как вы просили)"""
+    if not text or not text.strip():
+        return text
     try:
-        return MyMemoryTranslator(source='en', target='ru').translate(text)
-    except Exception as e:
-        log.warning(f"MyMemoryTranslator failed: {e}")
-        return text  # если перевод не удался — оставляем оригинал
+        # Сначала пробуем Google с автоопределением языка
+        return GoogleTranslator(source='auto', target='ru').translate(text)
+    except Exception as e1:
+        log.warning(f"GoogleTranslator failed: {e1}")
+        try:
+            # Затем MyMemory с автоопределением (может не поддерживаться — ловим ошибку)
+            return MyMemoryTranslator(source='auto', target='ru').translate(text)
+        except Exception as e2:
+            log.warning(f"MyMemoryTranslator failed: {e2}")
+            return text  # если оба не сработали — оставляем как есть
 
 def get_prefix(name):
     name = name.lower()
@@ -224,3 +231,4 @@ if __name__ == "__main__":
             time.sleep(1)
         log.info(f"✅ Цикл завершён. Новых новостей: {count}")
         time.sleep(60)
+
