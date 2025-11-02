@@ -170,8 +170,7 @@ def fetch_one_per_source():
 
             ru_title = translate(title).replace("\\", "")
             ru_desc = translate(desc).replace("\\", "")
-            prefix = get_prefix(src["name"]).upper()
-
+    
             prefix = get_prefix(src["name"])
             msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {link}"
             messages.append((msg, link))
@@ -227,4 +226,5 @@ if __name__ == "__main__":
             time.sleep(1)
         log.info(f"✅ Цикл завершён. Новых новостей: {count}")
         time.sleep(60)
+
 
