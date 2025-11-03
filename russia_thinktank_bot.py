@@ -12,30 +12,30 @@ from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 # ============= НАСТРОЙКИ =============
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+CHANNEL_IDS = [cid.strip() for cid in os.getenv("CHANNEL_IDS", "").split(",") if cid.strip()]
+DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 
-# Список источников — только рабочие RSS/Atom фиды
+# Список источников — только рабочие RSS/Atom фиды (без лишних пробелов)
 SOURCES = [
-    {"name": "Good Judgment (Платформа superforecasting)", "url": "https://goodjudgment.com/feed/"},
-    {"name": "Johns Hopkins (Академический think-tank)", "url": "https://www.centerforhealthsecurity.org/feed.xml"},
-    {"name": "Metaculus (Онлайн-платформа)", "url": "https://www.metaculus.com/feed/"},
-    {"name": "DNI Global Trends (Гос. think-tank)", "url": "https://www.dni.gov/index.php/gt2040-home?format=feed&type=rss"},
-    {"name": "RAND Corporation (Think-tank)", "url": "https://www.rand.org/rss.xml"},
-    {"name": "World Economic Forum (Think-tank/форум)", "url": "https://www.weforum.org/rss"},
-    {"name": "CSIS (Think-tank)", "url": "https://www.csis.org/rss.xml"},
-    {"name": "Atlantic Council (Think-tank)", "url": "https://www.atlanticcouncil.org/feed/"},
-    {"name": "Chatham House (Think-tank)", "url": "https://www.chathamhouse.org/feeds/all"},
-    {"name": "The Economist (Журнал)", "url": "https://www.economist.com/rss/rss.xml"},
-    {"name": "Bloomberg (Онлайн/broadcaster)", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
-    {"name": "Reuters Institute (Академический/онлайн)", "url": "https://reutersinstitute.politics.ox.ac.uk/rss.xml"},
-    {"name": "Foreign Affairs (Журнал)", "url": "https://www.foreignaffairs.com/rss.xml"},
-    {"name": "CFR (Think-tank)", "url": "https://www.cfr.org/rss/"},
-    {"name": "BBC Future (Broadcaster/онлайн)", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
-    {"name": "Future Timeline (Нишевый блог)", "url": "https://www.futuretimeline.net/feed/"},
-    {"name": "Carnegie Endowment (Think-tank)", "url": "https://carnegieendowment.org/rss.xml"},
-    {"name": "Bruegel (Think-tank)", "url": "https://www.bruegel.org/rss.xml"},
-    {"name": "E3G (Think-tank)", "url": "https://www.e3g.org/feed/"},
+    {"name": "Good Judgment", "url": "https://goodjudgment.com/feed/"},
+    {"name": "Johns Hopkins", "url": "https://www.centerforhealthsecurity.org/feed.xml"},
+    {"name": "Metaculus", "url": "https://www.metaculus.com/feed/"},
+    {"name": "DNI Global Trends", "url": "https://www.dni.gov/index.php/gt2040-home?format=feed&type=rss"},
+    {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
+    {"name": "World Economic Forum", "url": "https://www.weforum.org/en/feeds/rss"},
+    {"name": "CSIS", "url": "https://www.csis.org/rss.xml"},
+    {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
+    {"name": "Chatham House", "url": "https://www.chathamhouse.org/feeds/all"},
+    {"name": "The Economist", "url": "https://www.economist.com/the-world-this-week/rss.xml"},
+    {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
+    {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
+    {"name": "CFR", "url": "https://www.cfr.org/rss"},
+    {"name": "BBC Future", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
+    {"name": "Future Timeline", "url": "https://www.futuretimeline.net/feed/"},
+    {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
+    {"name": "Bruegel", "url": "https://www.bruegel.org/rss.xml"},
+    {"name": "E3G", "url": "https://www.e3g.org/feed/"},
 ]
 
 # Ключевые слова для фильтрации
@@ -45,6 +45,7 @@ KEYWORDS = [
 DB_PATH = "seen_titles.db"
 INTERVAL_SEC = 180
 MAX_DB_SIZE = 5000
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
 # ============= ЛОГИРОВАНИЕ =============
 logging.basicConfig(
@@ -103,82 +104,153 @@ def clean_text(t: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 def translate_to_russian(text: str) -> str:
-    if not text.strip():
+    if not text or not text.strip():
         return ""
     try:
-        return GoogleTranslator(source='auto', target='ru').translate(text)
+        # Попытка с GoogleTranslator
+        result = GoogleTranslator(source='auto', target='ru').translate(text)
+        if result and result.strip():
+            return result.strip()
     except Exception as e1:
         log.warning(f"GoogleTranslator failed: {e1}")
-        try:
-            return MyMemoryTranslator(source='auto', target='ru').translate(text)
-        except Exception as e2:
-            log.warning(f"MyMemoryTranslator also failed: {e2}")
-            return text
+    
+    try:
+        # Попытка с MyMemoryTranslator
+        result = MyMemoryTranslator(source='auto', target='ru').translate(text)
+        if result and result.strip():
+            return result.strip()
+    except Exception as e2:
+        log.warning(f"MyMemoryTranslator also failed: {e2}")
+    
+    # Если оба переводчика не сработали, возвращаем оригинальный текст
+    return text.strip()
 
-def escape_md(text: str) -> str:
-    for c in r'\_[]()~`>#+-=|{}.!':
-        text = text.replace(c, '\\' + c)
-    return text
+def html_escape(text: str) -> str:
+    """Экранирование HTML-специальных символов"""
+    return text.replace("&", "&amp;").replace("<", "<").replace(">", ">")
 
 # ============= ПОЛУЧЕНИЕ НОВОСТЕЙ =============
 def fetch_news():
     items = []
+    headers = {"User-Agent": USER_AGENT}
+    
     for src in SOURCES:
         try:
             log.info(f"Проверка: {src['name']}")
-            resp = requests.get(src["url"], timeout=15)
+            resp = requests.get(src["url"], headers=headers, timeout=15)
+            
             if resp.status_code != 200:
+                log.warning(f"Ошибка при запросе {src['name']}: HTTP {resp.status_code}")
                 continue
-            soup = BeautifulSoup(resp.content, "xml")
-            for item in soup.find_all("item"):
-                title = clean_text(item.title.get_text()) if item.title else ""
-                link = (item.link and item.link.get_text().strip()) or ""
+                
+            soup = BeautifulSoup(resp.content, "lxml-xml")  # Используем lxml-xml для лучшей обработки XML
+            
+            # Проверяем, есть ли вообще элементы item
+            items_found = soup.find_all("item")
+            if not items_found:
+                # Попробуем найти entry для Atom фидов
+                items_found = soup.find_all("entry")
+            
+            if not items_found:
+                log.warning(f"Не найдены элементы новостей в {src['name']}")
+                continue
+                
+            for item in items_found:
+                title = ""
+                link = ""
+                desc = ""
+                
+                # Обработка RSS формата
+                if item.name == "item":
+                    title = clean_text(item.title.get_text()) if item.title else ""
+                    link = (item.link and item.link.get_text().strip()) or (item.link and item.link.get("href", "")) or ""
+                    
+                    # Поиск описания
+                    desc_tag = item.find("description") or item.find("content:encoded") or item.find("content")
+                    if desc_tag:
+                        raw = desc_tag.get_text()
+                        # Удаляем HTML теги
+                        clean_desc = BeautifulSoup(raw, "html.parser").get_text()
+                        # Берем первое предложение или первые 250 символов
+                        sentences = re.split(r'(?<=[.!?])\s+', clean_desc.strip())
+                        desc = sentences[0] if sentences else clean_desc[:250]
+                
+                # Обработка Atom формата
+                elif item.name == "entry":
+                    title = clean_text(item.title.get_text()) if item.title else ""
+                    link_tag = item.find("link", rel="alternate") or item.find("link")
+                    link = link_tag.get("href", "") if link_tag else ""
+                    
+                    # Поиск описания
+                    desc_tag = item.find("summary") or item.find("content")
+                    if desc_tag:
+                        raw = desc_tag.get_text()
+                        clean_desc = BeautifulSoup(raw, "html.parser").get_text()
+                        sentences = re.split(r'(?<=[.!?])\s+', clean_desc.strip())
+                        desc = sentences[0] if sentences else clean_desc[:250]
+                
                 if not title or not link:
                     continue
-
+                
+                # Проверяем, не видели ли мы эту новость ранее
                 if is_title_seen(title):
                     continue
-
+                
+                # Помечаем как просмотренное ДО фильтрации по ключевым словам
+                mark_title_seen(title)
+                
+                # Фильтрация по ключевым словам
                 if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
-
-                desc = ""
-                desc_tag = item.find("description") or item.find("content:encoded")
-                if desc_tag:
-                    raw = BeautifulSoup(desc_tag.get_text(), "html.parser").get_text()
-                    sentences = re.split(r'(?<=[.!?])\s+', raw.strip())
-                    desc = sentences[0] if sentences else raw[:250]
-                if not desc.strip():
-                    continue
-
+                
+                # Перевод заголовка и описания
                 ru_title = translate_to_russian(title)
-                ru_desc = translate_to_russian(desc)
-
-                safe_title = escape_md(ru_title)
-                safe_desc = escape_md(ru_desc)
-                source_bold = f"*{src['name']}*"  # Жирный источник
-
-                msg = f"{source_bold}\n\n{safe_title}\n\n{safe_desc}\n\n[Источник]({link})"
+                ru_desc = translate_to_russian(desc) if desc else ""
+                
+                # Экранирование HTML
+                safe_title = html_escape(ru_title)
+                safe_desc = html_escape(ru_desc)
+                safe_link = html_escape(link)
+                
+                # Формирование сообщения в HTML формате
+                source_bold = f"<b>{src['name']}</b>"
+                msg = f"{source_bold}\n\n<strong>{safe_title}</strong>\n\n{safe_desc}\n\n<a href='{safe_link}'>Источник</a>"
+                
                 items.append((msg, title))
+                
         except Exception as e:
             log.error(f"Ошибка при обработке {src['name']}: {e}")
+    
     return items
 
 # ============= ОТПРАВКА В TELEGRAM =============
-def send_to_telegram(text: str) -> bool:
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "text": text,
-        "parse_mode": "MarkdownV2",
-        "disable_web_page_preview": True,
-    }
-    try:
-        r = requests.post(url, data=payload, timeout=15)
-        return r.status_code == 200
-    except Exception as e:
-        log.error(f"Ошибка отправки в Telegram: {e}")
-        return False
+def send_to_telegram(text: str, channel_ids: list) -> bool:
+    if DRY_RUN:
+        log.info(f"[ТЕСТ] Сообщение для отправки:\n{text}\n")
+        return True
+    
+    success = True
+    for ch_id in channel_ids:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": ch_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        try:
+            r = requests.post(url, data=payload, timeout=15)
+            if r.status_code != 200:
+                log.error(f"Не удалось отправить в {ch_id}: {r.text}")
+                success = False
+            else:
+                log.info(f"✅ Сообщение отправлено в {ch_id}")
+        except Exception as e:
+            log.error(f"Ошибка отправки в {ch_id}: {e}")
+            success = False
+        time.sleep(0.5)  # избегаем rate limit Telegram API
+    
+    return success
 
 # ============= HEALTH CHECK =============
 class HealthHandler(BaseHTTPRequestHandler):
@@ -192,32 +264,46 @@ class HealthHandler(BaseHTTPRequestHandler):
 def start_health_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    log.info(f"Health check server запущен на порту {port}")
     server.serve_forever()
 
 # ============= ОСНОВНОЙ ЦИКЛ =============
 def main_loop():
     init_db()
+    
+    # Проверка конфигурации
+    if not TELEGRAM_TOKEN:
+        log.error("❌ TELEGRAM_TOKEN не установлен!")
+        return
+    
+    if not CHANNEL_IDS:
+        log.error("❌ CHANNEL_IDS не установлен! Пример: CHANNEL_IDS=@channel1,@channel2")
+        return
+    
+    log.info(f"🚀 Бот запущен. Каналы: {', '.join(CHANNEL_IDS)}")
+    if DRY_RUN:
+        log.info("🧪 Режим тестирования (DRY_RUN) включен - сообщения не будут отправляться")
+    
     while True:
         try:
             news = fetch_news()
             sent = 0
+            total = len(news)
+            
             for msg, orig_title in news:
-                if send_to_telegram(msg):
-                    mark_title_seen(orig_title)
+                if send_to_telegram(msg, CHANNEL_IDS):
                     sent += 1
                 time.sleep(1)
-            log.info(f"✅ Цикл завершён. Отправлено: {sent}")
+            
+            log.info(f"✅ Цикл завершён. Найдено: {total}, Отправлено: {sent}")
         except Exception as e:
             log.exception(f"Критическая ошибка в основном цикле: {e}")
         time.sleep(INTERVAL_SEC)
 
 # ============= ЗАПУСК =============
 if __name__ == "__main__":
+    # Запуск health check сервера в отдельном потоке
     threading.Thread(target=start_health_server, daemon=True).start()
-    log.info(f"🚀 Бот запущен. Канал: {CHANNEL_ID}")
+    
+    # Запуск основного цикла
     main_loop()
-
-
-
-
-
