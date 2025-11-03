@@ -5,31 +5,42 @@ import logging
 import threading
 import requests
 import sqlite3
-from datetime import datetime
+import hashlib
+from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 # ============= НАСТРОЙКИ =============
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")  # например: "@finanosint"
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # Например: "@finanosint"
 
-# Пример источников (замените на свой список из 19)
 SOURCES = [
-    {"name": "The Economist", "url": "https://www.economist.com/rss/rss.xml"},
-    {"name": "Foreign Policy", "url": "https://foreignpolicy.com/feed/"},
-    # добавьте остальные 17 источников здесь
+ {"name": "E3G", "url": "https://www.e3g.org/feed/"},
+    {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
+    {"name": "Reuters Institute", "url": "https://reutersinstitute.politics.ox.ac.uk/rss.xml"},
+    {"name": "Bruegel", "url": "https://www.bruegel.org/rss.xml"},
+    {"name": "Chatham House", "url": "https://www.chathamhouse.org/rss.xml"},
+    {"name": "Chatham House – Russia", "url": "https://www.chathamhouse.org/topics/russia/rss.xml"},
+    {"name": "Chatham House – Europe", "url": "https://www.chathamhouse.org/topics/europe/rss.xml"},
+    {"name": "Chatham House – International Security", "url": "https://www.chathamhouse.org/topics/international-security/rss.xml"},
+    {"name": "CSIS", "url": "https://www.csis.org/rss.xml"},
+    {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
+    {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
+    {"name": "CFR", "url": "https://www.cfr.org/rss/"},
+    {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
+    {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
+    {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
+    {"name": "BBC Future Planet", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
+
 ]
 
-# Ключевые слова для фильтрации (регистронезависимо)
 KEYWORDS = [
-    r"russia", r"russian", r"kremlin", r"putin", r"moscow", r"ukraine", r"belarus",
-    r"nato", r"nord stream", r"gazprom", r"rosneft", r"ruble", r"russian economy",
-    r"sanction", r"russian military", r"wagner", r"prigozhin", r"lavrov", r"shoigu"
+   r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b", r"\bukraine\b", r"\bukrainian\b", r"\bzelensky\b", r"\bkyiv\b", r"\bkiev\b", r"\bcrimea\b", r"\bdonbas\b", r"\bsanction[s]?\b", r"\bgazprom\b", r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bshoigu\b", r"\bmedvedev\b", r"\bpeskov\b", r"\bnato\b", r"\beuropa\b", r"\busa\b", r"\bsoviet\b", r"\bussr\b", r"\bpost\W?soviet\b", r"\bsvo\b", r"\bспецоперация\b", r"\bspecial military operation\b", r"\bвойна\b", r"\bwar\b", r"\bconflict\b", r"\bконфликт\b", r"\bнаступление\b", r"\boffensive\b", r"\bатака\b", r"\battack\b", r"\bудар\b", r"\bstrike\b", r"\bобстрел\b", r"\bshelling\b", r"\bдрон\b", r"\bdrone\b", r"\bmissile\b", r"\bракета\b",  r"\bэскалация\b", r"\bescalation\b", r"\bмобилизация\b", r"\bmobilization\b", r"\bфронт\b", r"\bfrontline\b", r"\bзахват\b", r"\bcapture\b", r"\bосвобождение\b", r"\bliberation\b", r"\bбой\b", r"\bbattle\b", r"\bпотери\b", r"\bcasualties\b", r"\bпогиб\b", r"\bkilled\b", r"\bранен\b", r"\binjured\b", r"\bпленный\b", r"\bprisoner of war\b", r"\bпереговоры\b", r"\btalks\b", r"\bперемирие\b", r"\bceasefire\b", r"\bсанкции\b", r"\bsanctions\b", r"\bоружие\b", r"\bweapons\b", r"\bпоставки\b", r"\bsupplies\b", r"\bhimars\b", r"\batacms\b", r"\bhour ago\b", r"\bчас назад\b", r"\bminutos atrás\b", r"\b小时前\b", r"\bbitcoin\b", r"\bbtc\b", r"\bбиткоин\b", r"\b比特币\b", r"\bethereum\b", r"\beth\b", r"\bэфир\b", r"\b以太坊\b", r"\bbinance coin\b", r"\bbnb\b", r"\busdt\b", r"\btether\b", r"\bxrp\b", r"\bripple\b", r"\bcardano\b", r"\bada\b", r"\bsolana\b", r"\bsol\b", r"\bdoge\b", r"\bdogecoin\b", r"\bavalanche\b", r"\bavax\b", r"\bpolkadot\b", r"\bdot\b", r"\bchainlink\b", r"\blink\b", r"\btron\b", r"\btrx\b", r"\bcbdc\b", r"\bcentral bank digital currency\b", r"\bцифровой рубль\b", r"\bdigital yuan\b", r"\beuro digital\b", r"\bdefi\b", r"\bдецентрализованные финансы\b", r"\bnft\b", r"\bnon-fungible token\b", r"\bsec\b", r"\bцб рф\b", r"\bрегуляция\b", r"\bregulation\b", r"\bзапрет\b", r"\bban\b", r"\bмайнинг\b", r"\bmining\b", r"\bhalving\b", r"\bхалвинг\b", r"\bволатильность\b", r"\bvolatility\b", r"\bcrash\b", r"\bкрах\b", r"\b刚刚\b", r"\bدقائق مضت\b", r"\bpandemic\b", r"\bпандемия\b", r"\b疫情\b", r"\bجائحة\b", r"\boutbreak\b", r"\bвспышка\b", r"\bэпидемия\b", r"\bepidemic\b", r"\bvirus\b", r"\bвирус\b", r"\bвирусы\b", r"\b变异株\b",  r"\bvaccine\b", r"\bвакцина\b", r"\b疫苗\b", r"\bلقاح\b", r"\bbooster\b", r"\bбустер\b", r"\bревакцинация\b", r"\bquarantine\b", r"\bкарантин\b", r"\b隔离\b", r"\bحجر صحي\b", r"\blockdown\b", r"\bлокдаун\b", r"\b封锁\b", r"\bmutation\b", r"\bмутация\b", r"\b变异\b", r"\bstrain\b", r"\bштамм\b", r"\bomicron\b", r"\bdelta\b", r"\bbiosafety\b", r"\bбиобезопасность\b", r"\b生物安全\b", r"\blab leak\b", r"\bлабораторная утечка\b", r"\b实验室泄漏\b", r"\bgain of function\b", r"\bусиление функции\b", r"\bwho\b", r"\bвоз\b", r"\bcdc\b", r"\bроспотребнадзор\b", r"\binfection rate\b", r"\bзаразность\b", r"\b死亡率\b", r"\bhospitalization\b", r"\bгоспитализация\b", r"\bقبل ساعات\b", r"\b刚刚报告\b"
 ]
 
-DB_PATH = "seen_links.db"
-INTERVAL_SEC = 180  # 3 минуты
+DB_PATH = "seen_titles.db"
+INTERVAL_SEC = 180  # Проверка каждые 3 минуты
 MAX_DB_SIZE = 5000
 
 # ============= ЛОГИРОВАНИЕ =============
@@ -40,34 +51,55 @@ logging.basicConfig(
 )
 log = logging.getLogger()
 
-# ============= БАЗА ДАННЫХ =============
+# ============= РАБОТА С БАЗОЙ ДАННЫХ (по заголовкам) =============
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS seen_links (
-                link_hash TEXT PRIMARY KEY,
-                processed_at TIMESTAMP
+            CREATE TABLE IF NOT EXISTS seen_titles (
+                title_hash TEXT PRIMARY KEY,
+                processed_at TEXT NOT NULL
             )
         """)
         conn.commit()
 
-def is_seen(link: str) -> bool:
-    h = link.strip().rstrip('/').lower()
+def normalize_title(title: str) -> str:
+    """Удаляет всё кроме букв и цифр, приводит к нижнему регистру."""
+    return re.sub(r"[^a-zA-Zа-яА-Я0-9ёЁ]", "", title.lower()).strip()
+
+def is_title_seen(title: str) -> bool:
+    norm = normalize_title(title)
+    if not norm:
+        return False
+    h = hashlib.sha256(norm.encode("utf-8")).hexdigest()
     with sqlite3.connect(DB_PATH) as conn:
-        cur = conn.execute("SELECT 1 FROM seen_links WHERE link_hash = ?", (h,))
+        cur = conn.execute("SELECT 1 FROM seen_titles WHERE title_hash = ?", (h,))
         return cur.fetchone() is not None
 
-def mark_seen(link: str):
-    h = link.strip().rstrip('/').lower()
+def mark_title_seen(title: str):
+    norm = normalize_title(title)
+    if not norm:
+        return
+    h = hashlib.sha256(norm.encode("utf-8")).hexdigest()
+    now = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO seen_links (link_hash, processed_at) VALUES (?, ?)",
-            (h, datetime.utcnow().isoformat())
+            "INSERT OR IGNORE INTO seen_titles (title_hash, processed_at) VALUES (?, ?)",
+            (h, now)
         )
-        conn.execute(f"DELETE FROM seen_links WHERE link_hash NOT IN (SELECT link_hash FROM seen_links ORDER BY processed_at DESC LIMIT {MAX_DB_SIZE})")
+        conn.execute(f"""
+            DELETE FROM seen_titles
+            WHERE title_hash NOT IN (
+                SELECT title_hash FROM seen_titles
+                ORDER BY processed_at DESC
+                LIMIT {MAX_DB_SIZE}
+            )
+        """)
         conn.commit()
 
-# ============= ПЕРЕВОД =============
+# ============= ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =============
+def clean_text(t: str) -> str:
+    return re.sub(r"\s+", " ", t).strip()
+
 def translate_to_russian(text: str) -> str:
     if not text.strip():
         return ""
@@ -79,13 +111,14 @@ def translate_to_russian(text: str) -> str:
             return MyMemoryTranslator(source='auto', target='ru').translate(text)
         except Exception as e2:
             log.warning(f"MyMemoryTranslator also failed: {e2}")
-            return text  # возвращаем оригинал
+            return text
 
-# ============= ОЧИСТКА ТЕКСТА =============
-def clean_text(t: str) -> str:
-    return re.sub(r"\s+", " ", t).strip()
+def escape_md(text: str) -> str:
+    for c in r'_*[]()~`>#+-=|{}.!':
+        text = text.replace(c, '\\' + c)
+    return text
 
-# ============= ПАРСИНГ RSS =============
+# ============= ПОЛУЧЕНИЕ НОВОСТЕЙ =============
 def fetch_news():
     items = []
     for src in SOURCES:
@@ -100,16 +133,16 @@ def fetch_news():
                 link = (item.link and item.link.get_text().strip()) or ""
                 if not title or not link:
                     continue
-                link = link.split('?')[0].rstrip('/')
 
-                if is_seen(link):
+                # Пропускаем, если заголовок уже был
+                if is_title_seen(title):
                     continue
 
-                # Фильтрация по ключевым словам
+                # Фильтрация по ключевым словам в ЗАГОЛОВКЕ
                 if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
 
-                # Получение описания
+                # Извлечение описания (первое предложение)
                 desc = ""
                 desc_tag = item.find("description") or item.find("content:encoded")
                 if desc_tag:
@@ -119,23 +152,19 @@ def fetch_news():
                 if not desc.strip():
                     continue
 
+                # Перевод на русский
                 ru_title = translate_to_russian(title)
                 ru_desc = translate_to_russian(desc)
 
-                # Экранирование для MarkdownV2
-                def escape_md(text):
-                    for c in r'_*[]()~`>#+-=|{}.!':
-                        text = text.replace(c, '\\' + c)
-                    return text
-
+                # Форматирование под Telegram MarkdownV2
                 safe_title = escape_md(ru_title)
                 safe_desc = escape_md(ru_desc)
                 prefix = f"[{src['name']}]"
-
                 msg = f"{prefix}: {safe_title}\n\n{safe_desc}\n\n[Источник]({link})"
-                items.append((msg, link))
+
+                items.append((msg, title))
         except Exception as e:
-            log.error(f"Ошибка {src['name']}: {e}")
+            log.error(f"Ошибка при обработке {src['name']}: {e}")
     return items
 
 # ============= ОТПРАВКА В TELEGRAM =============
@@ -149,25 +178,21 @@ def send_to_telegram(text: str) -> bool:
     }
     try:
         r = requests.post(url, data=payload, timeout=15)
-        if r.status_code == 200:
-            return True
-        else:
-            log.error(f"Telegram error: {r.status_code} {r.text}")
-            return False
+        return r.status_code == 200
     except Exception as e:
-        log.error(f"Telegram exception: {e}")
+        log.error(f"Ошибка отправки в Telegram: {e}")
         return False
 
-# ============= HEALTH CHECK =============
+# ============= HEALTH CHECK ДЛЯ RENDER =============
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"OK")
     def log_message(self, format, *args):
-        pass
+        pass  # Подавляем логи health-check'ов
 
-def start_server():
+def start_health_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
@@ -179,18 +204,18 @@ def main_loop():
         try:
             news = fetch_news()
             sent = 0
-            for msg, link in news:
+            for msg, orig_title in news:
                 if send_to_telegram(msg):
-                    mark_seen(link)
+                    mark_title_seen(orig_title)
                     sent += 1
                 time.sleep(1)
             log.info(f"✅ Цикл завершён. Отправлено: {sent}")
         except Exception as e:
-            log.exception(f"Критическая ошибка в цикле: {e}")
+            log.exception(f"Критическая ошибка в основном цикле: {e}")
         time.sleep(INTERVAL_SEC)
 
 # ============= ЗАПУСК =============
 if __name__ == "__main__":
-    threading.Thread(target=start_server, daemon=True).start()
-    log.info(f"🚀 Бот запущен. Интервал: {INTERVAL_SEC} сек. Канал: {CHANNEL_ID}")
+    threading.Thread(target=start_health_server, daemon=True).start()
+    log.info(f"🚀 Бот запущен. Проверка каждые {INTERVAL_SEC} сек. Канал: {CHANNEL_ID}")
     main_loop()
