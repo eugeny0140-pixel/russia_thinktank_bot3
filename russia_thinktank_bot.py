@@ -32,7 +32,6 @@ SOURCES = [
     {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
     {"name": "BBC Future Planet", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
-
 ]
 
 KEYWORDS = [
@@ -219,4 +218,5 @@ if __name__ == "__main__":
     threading.Thread(target=start_health_server, daemon=True).start()
     log.info(f"🚀 Бот запущен. Проверка каждые {INTERVAL_SEC} сек. Канал: {CHANNEL_ID}")
     main_loop()
+
 
