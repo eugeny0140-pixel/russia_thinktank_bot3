@@ -4,3 +4,4 @@ deep-translator
 schedule
 lxml
 python-dotenv
+psycopg2-binary
