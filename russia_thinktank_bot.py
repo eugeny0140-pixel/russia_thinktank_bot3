@@ -159,7 +159,7 @@ def fetch_news():
                 safe_title = escape_md(ru_title)
                 safe_desc = escape_md(ru_desc)
                 prefix = f"[{src['name']}]"
-                msg = f"{prefix}: {safe_title}\n\n{safe_desc}\n\n[Источник]({link})"
+               msg = f"{prefix}: {safe_title}\n{safe_lead}\n[Источник]({link})"
 
                 items.append((msg, title))
         except Exception as e:
@@ -218,5 +218,6 @@ if __name__ == "__main__":
     threading.Thread(target=start_health_server, daemon=True).start()
     log.info(f"🚀 Бот запущен. Проверка каждые {INTERVAL_SEC} сек. Канал: {CHANNEL_ID}")
     main_loop()
+
 
 
