@@ -1,27 +1,34 @@
+# russia_thinktank_bot.py
 import os
 import re
 import time
 import logging
 import requests
-import html
 from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator, MyMemoryTranslator
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import psycopg2
-import hashlib
-import threading
+from deep_translator import GoogleTranslator
+import schedule
 
-# --- Настройки ---
+# ================== НАСТРОЙКИ ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not TELEGRAM_TOKEN or not DATABASE_URL:
-    raise ValueError("❌ Переменные TELEGRAM_BOT_TOKEN и DATABASE_URL обязательны!")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 
-CHANNEL_IDS = ["@time_n_John", "@finanosint"]
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN не задан")
 
-# Исправленные URL — пробелы удалены
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
+    {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
+    {"name": "Reuters Institute", "url": "https://reutersinstitute.politics.ox.ac.uk/rss.xml"},
+    {"name": "Bruegel", "url": "https://www.bruegel.org/rss.xml"},
+    {"name": "Chatham House", "url": "https://www.chathamhouse.org/rss.xml"},
+    {"name": "CSIS", "url": "https://www.csis.org/rss.xml"},
+    {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
+    {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
+    {"name": "CFR", "url": "https://www.cfr.org/rss/"},
+    {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
+    {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
+    {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
+{"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
     {"name": "Reuters Institute", "url": "https://reutersinstitute.politics.ox.ac.uk/rss.xml"},
     {"name": "Bruegel", "url": "https://www.bruegel.org/rss.xml"},
@@ -39,7 +46,7 @@ SOURCES = [
 ]
 
 KEYWORDS = [
-    r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
+     r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
     r"\bukraine\b", r"\bukrainian\b", r"\bzelensky\b", r"\bkyiv\b", r"\bkiev\b",
     r"\bcrimea\b", r"\bdonbas\b", r"\bsanction[s]?\b", r"\bgazprom\b",
     r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bshoigu\b",
@@ -86,56 +93,28 @@ KEYWORDS = [
     r"\blab leak\b", r"\bлабораторная утечка\b", r"\b实验室泄漏\b",
     r"\bgain of function\b", r"\bусиление функции\b",
     r"\bwho\b", r"\bвоз\b", r"\bcdc\b", r"\bроспотребнадзор\b",
-    r"\binfection rate\b", r"\bзаразность\b", r"\b死亡率\b",
-    r"\bhospitalization\b", r"\bгоспитализация\b",
-    r"\bقبل ساعات\b", r"\b刚刚报告\b"
+    r"\binfection rate\b", r"\bзаразность\b", r"\b死亡率\b", r"\bhospitalization\b", r"\bгоспитализация\b", r"\bقبل ساعات\b", r"\b刚刚报告\b"
 ]
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-log = logging.getLogger()
+MAX_SEEN = 5000
+MAX_PER_RUN = 12
+seen_links = set()
 
-FETCH_INTERVAL = 14  # секунд
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger(__name__)
 
-# --- БД ---
-def get_db_conn():
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
+def clean_text(t):
+    return re.sub(r"\s+", " ", t).strip()
 
-def is_seen(link):
-    h = hashlib.sha256(link.encode()).hexdigest()
-    with get_db_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM seen_links WHERE link_hash = %s", (h,))
-            return cur.fetchone() is not None
-
-def mark_seen(link):
-    h = hashlib.sha256(link.encode()).hexdigest()
-    with get_db_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO seen_links (link_hash) VALUES (%s)
-                ON CONFLICT (link_hash) DO NOTHING
-            """, (h,))
-        conn.commit()
-
-# --- Перевод ---
-def translate(text):
-    if not text or not text.strip():
-        return text
-    clean_text = text.strip()
+def translate_to_russian(text):
     try:
-        return GoogleTranslator(source='auto', target='ru').translate(clean_text)
-    except Exception as e1:
-        log.debug(f"GoogleTranslator failed: {e1}")
-        try:
-            return MyMemoryTranslator(source='auto', target='ru').translate(clean_text)
-        except Exception as e2:
-            log.debug(f"MyMemoryTranslator failed: {e2}")
-            return clean_text
+        return GoogleTranslator(source='auto', target='ru').translate(text)
+    except:
+        return text
 
-# --- Префикс ---
-def get_prefix(name):
-    name_lower = name.lower()
-    prefixes = {
+def get_source_prefix(name):
+    name = name.lower()
+    mapping = {
         "e3g": "E3G",
         "foreign affairs": "FOREIGNAFFAIRS",
         "reuters": "REUTERS",
@@ -150,129 +129,129 @@ def get_prefix(name):
         "carnegie": "CARNEGIE",
         "bbc": "BBC"
     }
-    for key, prefix in prefixes.items():
-        if key in name_lower:
-            return prefix
-    return name.split()[0].upper()
+    for key, val in mapping.items():
+        if key in name:
+            return val
+    return name.split()[0].lower()
 
-# --- Основная логика ---
-def fetch_news():
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"}
-    messages = []
+def fetch_rss_news():
+    global seen_links
+    result = []
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
     for src in SOURCES:
+        if len(result) >= MAX_PER_RUN:
+            break
         try:
-            url = src["url"].strip()  # ← .strip() на случай опечаток
-            resp = requests.get(url, timeout=20, headers=headers)
-            if resp.status_code != 200:
-                log.warning(f"{src['name']}: HTTP {resp.status_code}")
-                continue
-
+            url = src["url"].strip()
+            log.info(f"📡 {src['name']}")
+            resp = requests.get(url, timeout=30, headers=headers)
             soup = BeautifulSoup(resp.content, "xml")
-            items = soup.find_all("item")
-            if not items:
-                log.debug(f"{src['name']}: no <item> found")
-                continue
 
-            for item in items:
-                link_tag = item.find("link")
-                link = link_tag.get_text().strip() if link_tag else ""
-                if not link:
-                    continue
-                canonical_link = link.split('#')[0]
+            for item in soup.find_all("item"):
+                if len(result) >= MAX_PER_RUN:
+                    break
 
-                if is_seen(canonical_link):
+                title = clean_text(item.title.get_text()) if item.title else ""
+                link = (item.link.get_text() or item.guid.get_text()).strip() if item.link or item.guid else ""
+
+                if not title or not link or link in seen_links:
                     continue
 
-                title_tag = item.find("title")
-                title = html.unescape(title_tag.get_text().strip()) if title_tag else ""
-                if not title:
+                if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
 
-                desc_tag = item.find("description")
-                desc_raw = desc_tag.get_text() if desc_tag else ""
-                desc_clean = html.unescape(desc_raw)  # ← обработка HTML-сущностей в описании
-                desc_soup = BeautifulSoup(desc_clean, "html.parser")
-                desc_text = desc_soup.get_text().strip()
-                desc = re.split(r'(?<=[.!?])\s+', desc_text)[0] if desc_text else desc_text[:200]
+                lead = ""
+                desc_tag = item.find("description") or item.find("content:encoded")
+                if desc_tag:
+                    raw_html = desc_tag.get_text()
+                    desc_soup = BeautifulSoup(raw_html, "html.parser")
+                    full_text = clean_text(desc_soup.get_text())
+                    sentences = re.split(r'(?<=[.!?])\s+', full_text)
+                    if sentences and sentences[0].strip():
+                        lead = sentences[0].strip()
+                    else:
+                        lead = full_text[:250] + "…" if len(full_text) > 250 else full_text
 
-                full_text = f"{title} {desc}"
-                if not any(re.search(kw, full_text, re.IGNORECASE) for kw in KEYWORDS):
+                if not lead.strip():
                     continue
 
-                if not desc.strip():
-                    desc = "Без описания."
+                ru_title = translate_to_russian(title)
+                ru_lead = translate_to_russian(lead)
 
-                ru_title = translate(title).replace("\\", "")
-                ru_desc = translate(desc).replace("\\", "")
-                prefix = get_prefix(src["name"])
-                msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {canonical_link}"
-                messages.append((msg, canonical_link))
+                def escape_md_v2(text):
+                    for c in r'_*[]()~`>#+-=|{}.!':
+                        text = text.replace(c, '\\' + c)
+                    return text
+
+                safe_title = escape_md_v2(ru_title)
+                safe_lead = escape_md_v2(ru_lead)
+                prefix = get_source_prefix(src["name"])
+
+                msg = f"{prefix}: {safe_title}\n\n{safe_lead}\n\n[Источник]({link})"
+                result.append({"msg": msg, "link": link})
 
         except Exception as e:
-            log.error(f"{src['name']}: {e}")
+            log.error(f"❌ {src['name']}: {e}")
 
-    return messages
+    return result
 
-# --- Отправка в Telegram ---
-def send_telegram(text):
-    success = True
-    for cid in CHANNEL_IDS:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"  # ← КРИТИЧЕСКИ ВАЖНО: без пробелов!
-        data = {
-            "chat_id": cid,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        }
-        try:
-            r = requests.post(url, data=data, timeout=10)
-            if r.status_code == 200:
-                log.info(f"✅ Отправлено в {cid}")
-            else:
-                log.error(f"❌ Ошибка Telegram {cid}: {r.status_code} {r.text}")
-                success = False
-        except Exception as e:
-            log.error(f"❌ Исключение при отправке в {cid}: {e}")
-            success = False
-    return success
+def send_to_telegram(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "text": text,
+        "parse_mode": "MarkdownV2",
+        "disable_web_page_preview": True,
+    }
+    try:
+        r = requests.post(url, data=payload, timeout=15)
+        if r.status_code == 200:
+            log.info("✅ Отправлено")
+        else:
+            log.error(f"❌ Telegram error: {r.text}")
+    except Exception as e:
+        log.error(f"❌ Исключение: {e}")
 
-# --- Health check ---
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
+def job():
+    global seen_links
+    log.info("🔄 Проверка новостей...")
+    news = fetch_rss_news()
+    if not news:
+        log.info("📭 Нет релевантных публикаций.")
+        return
 
-def start_server():
-    port = int(os.environ.get("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), HealthHandler).serve_forever()
+    for item in news:
+        send_to_telegram(item["msg"])
+        seen_links.add(item["link"])
+        if len(seen_links) > MAX_SEEN:
+            seen_links = set(list(seen_links)[-4000:])
+        time.sleep(1)
 
-# --- Запуск ---
+# ================== ЗАПУСК С HTTP-СЕРВЕРОМ ДЛЯ RENDER ==================
 if __name__ == "__main__":
-    with get_db_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS seen_links (
-                    link_hash VARCHAR(64) PRIMARY KEY,
-                    processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-        conn.commit()
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def log_message(self, format, *args):
+            pass
+
+    def start_server():
+        port = int(os.environ.get("PORT", 10000))
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        server.serve_forever()
 
     threading.Thread(target=start_server, daemon=True).start()
-    log.info("🚀 Бот запущен. Health-check на порту $PORT")
 
+    log.info("🚀 Бот запущен как Web Service на Render")
+    job()
+    schedule.every(3).minutes.do(job)
     while True:
-        try:
-            news_items = fetch_news()
-            for msg, link in news_items:
-                mark_seen(link)
-                if not send_telegram(msg):
-                    log.warning(f"Сообщение сохранено, но не отправлено в Telegram: {link}")
-                time.sleep(1)
-            log.info(f"✅ Цикл завершён. Новых новостей: {len(news_items)}")
-        except Exception as e:
-            log.exception(f"Критическая ошибка: {e}")
-
-        time.sleep(60)
+        schedule.run_pending()
+        time.sleep(1)
 
