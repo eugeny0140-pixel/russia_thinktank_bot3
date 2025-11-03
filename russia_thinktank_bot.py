@@ -14,7 +14,7 @@ from deep_translator import GoogleTranslator, MyMemoryTranslator
 # ============= НАСТРОЙКИ =============
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 # Исправлено: правильно заданы два канала по умолчанию
-CHANNEL_IDS = [cid.strip() for cid in os.getenv("CHANNEL_IDS", "@time_n_John,@finanosint").split(",") if cid.strip()]
+CHANNEL_IDS = [cid.strip() for cid in os.getenv("@time_n_John", "@finanosint").split(",") if cid.strip()]
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 
 # Список источников — убраны лишние пробелы в URL
@@ -320,4 +320,5 @@ if __name__ == "__main__":
     
     # Запуск основного цикла
     main_loop()
+
 
