@@ -226,8 +226,8 @@ def fetch_news():
                 
                 # Формирование сообщения в HTML формате
                 source_bold = f"<b>{src['name']}</b>"
-                msg = f"{source_bold}\n\n<strong>{safe_title}</strong>\n\n{safe_desc}\n\n<a href='{safe_link}'>Источник</a>"
-                
+                msg = f"{source_bold}\n\n{safe_title}\n\n{safe_desc}\n\n[Источник]({link})"
+                items.append((msg, title))
                 items.append((msg, title))
                 
         except Exception as e:
@@ -320,3 +320,4 @@ if __name__ == "__main__":
     
     # Запуск основного цикла
     main_loop()
+
