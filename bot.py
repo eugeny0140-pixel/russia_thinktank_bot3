@@ -274,4 +274,5 @@ if __name__ == "__main__":
         except Exception as e:
             log.exception(f"Критическая ошибка: {e}")
 
-        time.sleep(FETCH_INTERVAL)
+        time.sleep(60)
+
