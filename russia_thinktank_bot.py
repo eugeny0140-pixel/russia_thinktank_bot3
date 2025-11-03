@@ -13,7 +13,7 @@ from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 # ============= НАСТРОЙКИ =============
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@finanosint")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
 
 # Список источников — только рабочие RSS/Atom фиды
 SOURCES = [
@@ -223,6 +223,7 @@ if __name__ == "__main__":
     threading.Thread(target=start_health_server, daemon=True).start()
     log.info(f"🚀 Бот запущен. Канал: {CHANNEL_ID}")
     main_loop()
+
 
 
 
