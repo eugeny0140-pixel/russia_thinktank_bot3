@@ -10,7 +10,7 @@ import schedule
 
 # ================== НАСТРОЙКИ ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John", "@finanosint")
 
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не задан")
@@ -254,4 +254,5 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(1)
+
 
