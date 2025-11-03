@@ -13,10 +13,11 @@ from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 # ============= НАСТРОЙКИ =============
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-CHANNEL_IDS = [cid.strip() for cid in os.getenv("CHANNEL_IDS", "@time_n_John", "@finanosint").split(",") if cid.strip()]
+# Исправлено: правильно заданы два канала по умолчанию
+CHANNEL_IDS = [cid.strip() for cid in os.getenv("CHANNEL_IDS", "@time_n_John,@finanosint").split(",") if cid.strip()]
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 
-# Список источников — только рабочие RSS/Atom фиды (без лишних пробелов)
+# Список источников — убраны лишние пробелы в URL
 SOURCES = [
     {"name": "Good Judgment", "url": "https://goodjudgment.com/feed/"},
     {"name": "Johns Hopkins", "url": "https://www.centerforhealthsecurity.org/feed.xml"},
@@ -143,7 +144,12 @@ def fetch_news():
                 log.warning(f"Ошибка при запросе {src['name']}: HTTP {resp.status_code}")
                 continue
                 
-            soup = BeautifulSoup(resp.content, "lxml-xml")  # Используем lxml-xml для лучшей обработки XML
+            try:
+                # Используем более надежный парсер "xml"
+                soup = BeautifulSoup(resp.content, "xml")
+            except Exception as e:
+                log.warning(f"Не удалось распарсить XML для {src['name']} с lxml: {e}. Пробуем html.parser.")
+                soup = BeautifulSoup(resp.content, "html.parser")
             
             # Проверяем, есть ли вообще элементы item
             items_found = soup.find_all("item")
@@ -163,7 +169,13 @@ def fetch_news():
                 # Обработка RSS формата
                 if item.name == "item":
                     title = clean_text(item.title.get_text()) if item.title else ""
-                    link = (item.link and item.link.get_text().strip()) or (item.link and item.link.get("href", "")) or ""
+                    # Получаем ссылку из текста или атрибута
+                    link = ""
+                    if item.link:
+                        if item.link.get_text().strip():
+                            link = item.link.get_text().strip()
+                        elif item.link.get("href"):
+                            link = item.link.get("href", "").strip()
                     
                     # Поиск описания
                     desc_tag = item.find("description") or item.find("content:encoded") or item.find("content")
@@ -231,6 +243,7 @@ def send_to_telegram(text: str, channel_ids: list) -> bool:
     
     success = True
     for ch_id in channel_ids:
+        # Исправлено: убраны пробелы в URL API
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {
             "chat_id": ch_id,
@@ -307,4 +320,3 @@ if __name__ == "__main__":
     
     # Запуск основного цикла
     main_loop()
-
