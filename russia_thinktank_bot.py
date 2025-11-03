@@ -7,14 +7,51 @@ import requests
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
 import schedule
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # ================== НАСТРОЙКИ ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@time_n_John", "@finanosint")
-
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # УБРАЛИ дефолтные значения!
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не задан")
+if not CHANNEL_ID:
+    raise ValueError("CHANNEL_ID не задан — укажите в переменных окружения")
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL не задан — необходим для отслеживания уже отправленных ссылок")
+
+# Инициализация БД
+def init_db():
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS seen_links (
+                link TEXT PRIMARY KEY,
+                seen_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+    conn.close()
+    log.info("✅ База данных инициализирована")
+
+def is_link_seen(link):
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM seen_links WHERE link = %s", (link,))
+        result = cur.fetchone()
+    conn.close()
+    return result is not None
+
+def mark_link_as_seen(link):
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO seen_links (link) VALUES (%s) ON CONFLICT DO NOTHING", (link,))
+        conn.commit()
+    conn.close()
+
+# ================== ОСТАЛЬНОЙ КОД ==================
 SOURCES = [
     {"name": "E3G", "url": "https://www.e3g.org/feed/"},
     {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
@@ -28,25 +65,14 @@ SOURCES = [
     {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
     {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
     {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
-{"name": "E3G", "url": "https://www.e3g.org/feed/"},
-    {"name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml"},
-    {"name": "Reuters Institute", "url": "https://reutersinstitute.politics.ox.ac.uk/rss.xml"},
-    {"name": "Bruegel", "url": "https://www.bruegel.org/rss.xml"},
     {"name": "Chatham House – Russia", "url": "https://www.chathamhouse.org/topics/russia/rss.xml"},
     {"name": "Chatham House – Europe", "url": "https://www.chathamhouse.org/topics/europe/rss.xml"},
     {"name": "Chatham House – International Security", "url": "https://www.chathamhouse.org/topics/international-security/rss.xml"},
-    {"name": "CSIS", "url": "https://www.csis.org/rss.xml"},
-    {"name": "Atlantic Council", "url": "https://www.atlanticcouncil.org/feed/"},
-    {"name": "RAND Corporation", "url": "https://www.rand.org/rss.xml"},
-    {"name": "CFR", "url": "https://www.cfr.org/rss/"},
-    {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml"},
-    {"name": "Bloomberg Politics", "url": "https://www.bloomberg.com/politics/feeds/site.xml"},
-    {"name": "Carnegie Endowment", "url": "https://carnegieendowment.org/rss.xml"},
     {"name": "BBC Future Planet", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
 ]
 
 KEYWORDS = [
-     r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
+    r"\brussia\b", r"\brussian\b", r"\bputin\b", r"\bmoscow\b", r"\bkremlin\b",
     r"\bukraine\b", r"\bukrainian\b", r"\bzelensky\b", r"\bkyiv\b", r"\bkiev\b",
     r"\bcrimea\b", r"\bdonbas\b", r"\bsanction[s]?\b", r"\bgazprom\b",
     r"\bnord\s?stream\b", r"\bwagner\b", r"\blavrov\b", r"\bshoigu\b",
@@ -96,9 +122,7 @@ KEYWORDS = [
     r"\binfection rate\b", r"\bзаразность\b", r"\b死亡率\b", r"\bhospitalization\b", r"\bгоспитализация\b", r"\bقبل ساعات\b", r"\b刚刚报告\b"
 ]
 
-MAX_SEEN = 5000
 MAX_PER_RUN = 12
-seen_links = set()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -109,11 +133,12 @@ def clean_text(t):
 def translate_to_russian(text):
     try:
         return GoogleTranslator(source='auto', target='ru').translate(text)
-    except:
+    except Exception as e:
+        log.error(f"❌ Ошибка перевода: {e}")
         return text
 
 def get_source_prefix(name):
-    name = name.lower()
+    name_lower = name.lower()
     mapping = {
         "e3g": "E3G",
         "foreign affairs": "FOREIGNAFFAIRS",
@@ -130,15 +155,13 @@ def get_source_prefix(name):
         "bbc": "BBC"
     }
     for key, val in mapping.items():
-        if key in name:
+        if key in name_lower:
             return val
     return name.split()[0].lower()
 
 def fetch_rss_news():
-    global seen_links
     result = []
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
     for src in SOURCES:
         if len(result) >= MAX_PER_RUN:
             break
@@ -147,20 +170,15 @@ def fetch_rss_news():
             log.info(f"📡 {src['name']}")
             resp = requests.get(url, timeout=30, headers=headers)
             soup = BeautifulSoup(resp.content, "xml")
-
             for item in soup.find_all("item"):
                 if len(result) >= MAX_PER_RUN:
                     break
-
                 title = clean_text(item.title.get_text()) if item.title else ""
                 link = (item.link.get_text() or item.guid.get_text()).strip() if item.link or item.guid else ""
-
-                if not title or not link or link in seen_links:
+                if not title or not link or is_link_seen(link):  # Проверяем через БД!
                     continue
-
                 if not any(re.search(kw, title, re.IGNORECASE) for kw in KEYWORDS):
                     continue
-
                 lead = ""
                 desc_tag = item.find("description") or item.find("content:encoded")
                 if desc_tag:
@@ -172,28 +190,21 @@ def fetch_rss_news():
                         lead = sentences[0].strip()
                     else:
                         lead = full_text[:250] + "…" if len(full_text) > 250 else full_text
-
                 if not lead.strip():
                     continue
-
                 ru_title = translate_to_russian(title)
                 ru_lead = translate_to_russian(lead)
-
                 def escape_md_v2(text):
                     for c in r'_*[]()~`>#+-=|{}.!':
                         text = text.replace(c, '\\' + c)
                     return text
-
                 safe_title = escape_md_v2(ru_title)
                 safe_lead = escape_md_v2(ru_lead)
                 prefix = get_source_prefix(src["name"])
-
-                msg = f"{prefix}: {safe_title}\n\n{safe_lead}\n\n[Источник]({link})"
+                msg = f"{prefix}: {safe_title}\n{safe_lead}\n[Источник]({link})"
                 result.append({"msg": msg, "link": link})
-
         except Exception as e:
             log.error(f"❌ {src['name']}: {e}")
-
     return result
 
 def send_to_telegram(text):
@@ -214,18 +225,14 @@ def send_to_telegram(text):
         log.error(f"❌ Исключение: {e}")
 
 def job():
-    global seen_links
     log.info("🔄 Проверка новостей...")
     news = fetch_rss_news()
     if not news:
         log.info("📭 Нет релевантных публикаций.")
         return
-
     for item in news:
         send_to_telegram(item["msg"])
-        seen_links.add(item["link"])
-        if len(seen_links) > MAX_SEEN:
-            seen_links = set(list(seen_links)[-4000:])
+        mark_link_as_seen(item["link"])  # Сохраняем в БД!
         time.sleep(1)
 
 # ================== ЗАПУСК С HTTP-СЕРВЕРОМ ДЛЯ RENDER ==================
@@ -246,13 +253,15 @@ if __name__ == "__main__":
         server = HTTPServer(("0.0.0.0", port), HealthHandler)
         server.serve_forever()
 
-    threading.Thread(target=start_server, daemon=True).start()
+    # Инициализация БД при старте
+    init_db()
 
+    threading.Thread(target=start_server, daemon=True).start()
     log.info("🚀 Бот запущен как Web Service на Render")
+
     job()
     schedule.every(3).minutes.do(job)
+
     while True:
         schedule.run_pending()
         time.sleep(1)
-
-
