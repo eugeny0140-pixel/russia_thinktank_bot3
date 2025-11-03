@@ -1,5 +1,6 @@
 requests
 beautifulsoup4
+deep-translator
+schedule
 lxml
-deep-translator>=1.10.0
-psycopg2-binary
+python-dotenv
