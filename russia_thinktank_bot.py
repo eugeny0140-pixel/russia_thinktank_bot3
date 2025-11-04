@@ -226,7 +226,7 @@ def fetch_news():
                 
                 # Формирование сообщения в HTML формате
                 source_bold = f"<b>{src['name']}</b>"
-                msg = f"{source_bold}\n\n<strong>{safe_title}</strong>\n\n{safe_desc}\n\n<a href='{safe_link}'>Источник</a>"
+                msg = f"<b>{prefix}</b>: {ru_title}\n\n{ru_desc}\n\nИсточник: {link}"
                 
                 # ИСПРАВЛЕНО: Убрано дублирование сообщения
                 items.append((msg, title))
@@ -247,17 +247,15 @@ def send_to_telegram(text: str, channel_ids: list) -> bool:
         # ИСПРАВЛЕНО: Убраны пробелы в URL API
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {
-            "chat_id": ch_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
+            "chat_id": ch_id, "text": text, "parse_mode":
+            "HTML", "disable_web_page_preview": True,
         }
         
         # Попытка отправки с обработкой ошибок 429
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                r = requests.post(url, data=payload, timeout=15)
+                r = requests.post(url, data=payload, timeout=14)
                 
                 if r.status_code == 200:
                     log.info(f"✅ Сообщение отправлено в {ch_id}")
@@ -282,7 +280,7 @@ def send_to_telegram(text: str, channel_ids: list) -> bool:
             success = False
         
         # Увеличиваем задержку между отправками в разные каналы
-        time.sleep(1.5)
+        time.sleep(5)
     
     return success
 
@@ -347,3 +345,4 @@ if __name__ == "__main__":
     
     # Запуск основного цикла
     main_loop()
+
